@@ -641,16 +641,16 @@
   .modal-actions {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     margin-top: 22px;
     flex-wrap: wrap;
   }
-  .btn-launch {
+  /* shared pill button; first link in a project is .primary (filled), the
+     rest are .ghost (outlined). External links carry a ↗ via .btn-ext. */
+  .btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: var(--pumpkin);
-    color: #fff;
     text-decoration: none;
     font-family: var(--mono);
     font-size: 13px;
@@ -659,22 +659,31 @@
     font-weight: 600;
     padding: 12px 20px;
     border-radius: 10px;
-    transition: transform .2s ease, box-shadow .2s ease, background .2s ease;
+    border: 1px solid transparent;
+    transition: transform .2s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease, color .2s ease;
   }
-  .btn-launch span { transition: transform .2s ease; }
-  .btn-launch:hover {
+  .btn .arrow { transition: transform .2s ease; }
+  .btn.primary {
+    background: var(--pumpkin);
+    color: #fff;
+  }
+  .btn.primary:hover {
     background: var(--pumpkin-hot, #F2622E);
     transform: translateY(-2px);
     box-shadow: 0 12px 30px rgba(201,80,0,.35);
   }
-  .btn-launch:hover span { transform: translateX(3px); }
-  .launch-note {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
+  .btn.ghost {
+    background: transparent;
+    color: var(--ink);
+    border-color: var(--line);
   }
+  .btn.ghost:hover {
+    border-color: var(--pumpkin);
+    color: var(--pumpkin);
+    transform: translateY(-2px);
+  }
+  .btn:hover .arrow { transform: translate(2px, -2px); }
+  .btn.primary:hover .arrow { transform: translateX(3px); }
   .modal-photos {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -938,12 +947,7 @@
       <h3 class="modal-title" id="modal-title"><span class="hash" id="modal-num">01</span>&nbsp;<span id="modal-title-text">Project</span></h3>
       <p class="modal-lead" id="modal-lead">A short one-line summary of the project lives here.</p>
 
-      <div class="modal-actions">
-        <a class="btn-launch" id="modal-launch" href="#" target="_blank" rel="noopener">
-          Launch demo <span aria-hidden="true">&rarr;</span>
-        </a>
-        <span class="launch-note">opens in a new tab</span>
-      </div>
+      <div class="modal-actions" id="modal-actions"><!-- buttons injected per-project --></div>
 
       <div class="modal-photos" id="modal-photos"><!-- screenshots injected per-project --></div>
 
@@ -1473,38 +1477,78 @@
     // → project mapping, and every field in the modal. There are more tiles
     // on the wall than real projects, so tiles just cycle through this list
     // (tile N shows PROJECTS[N % PROJECTS.length]). To add a project later:
-    // drop its standalone page in /experiments and append one object here —
-    // no other code changes needed. `photos` is optional (paths under /assets);
-    // leave it empty and the photo strip is hidden for that project.
+    // append one object here — no other code changes needed.
+    //   • `links`  — buttons in the modal, in order. The first is the primary
+    //                (filled) button; the rest render as ghost buttons. A link
+    //                can point anywhere: a local /experiments page, a GitHub
+    //                repo, a notebook, a Discord invite — they all open in a
+    //                new tab. Omit/empty for a project with no links yet.
+    //   • `photos` — optional screenshots (paths under /assets); empty → the
+    //                photo strip is hidden for that project.
     const PROJECTS = [
       {
-        label: "Invoice Rush",
-        title: "Invoice Rush",
-        demo: "experiments/invoice-game.html",
-        lead: "A receiving-desk game built to show how unforgiving manual invoice reconciliation really is — then try to beat my time.",
-        description: "A standalone top-down desk where you receive a real 11-page shipment: draw on the paper with a pen, zoom in with a magnifier, and turn the dog-eared pages while you scan each line item against the receiving terminal before the clock runs out. Five items randomly “don’t ship” every round — miss one and you’ll find out at the buzzer. It’s the playable companion to my invoicing-automation tool.",
-        objective: "Make the case for automation by making the manual job — reconciling 130-odd barcodes against a printed invoice, by hand, against the clock — something you actually have to sit through.",
-        stack: ["HTML Canvas", "Vanilla JS", "PyMuPDF", "openpyxl"],
+        label: "Invoice Scanner",
+        title: "Invoice Scanner",
+        lead: "A local web app that turns invoice receiving from a barcode-by-barcode slog into a guided scan-and-reconcile flow.",
+        description: "A Flask web app I built for my receiving job: it imports an invoice from a PDF, hosts a local scanning page driven by a Zebra handheld, and tracks each item’s scanned quantity against the expected quantity — with add/remove scan modes, a live scan log, and Excel export of the finalized differences. Built around the RCSS standardized documents I work with day to day.",
+        objective: "Replace the hand-counted, paper-against-screen receiving process with a scanner-driven workflow that flags over- and under-shipments automatically.",
+        stack: ["Python", "Flask", "PDF parsing", "UPC / barcode", "Excel"],
+        links: [
+          { label: "Launch demo", href: "experiments/invoice-game.html" },
+          { label: "Source", href: "https://github.com/evankoza/invoice-scanner" },
+        ],
+        photos: [],
+      },
+      {
+        label: "Discord Bot",
+        title: "Steam Play-Together Bot",
+        lead: "A Discord bot that finds the multiplayer games you and your friends actually own in common — then helps you pick one.",
+        description: "Enter a SteamID64 or display name and the bot pulls your Steam friends list, lets you pick up to five friends, and compares everyone’s libraries to surface only the titles Steam marks as multiplayer. /compare lists the overlap; /roulette spins through it for you. It handles private libraries and Steam/store API hiccups gracefully.",
+        objective: "Kill the “what can we all actually play together?” group-chat stalemate with a single slash command.",
+        stack: ["Python", "discord.py", "Steam Web API"],
+        links: [
+          { label: "Add to Discord", href: "https://discord.com/oauth2/authorize?client_id=1480349911651450991" },
+          { label: "Source", href: "https://github.com/evankoza/discord-play-together-bot" },
+        ],
+        photos: [],
+      },
+      {
+        label: "Data Analysis",
+        title: "Student Performance Analysis",
+        lead: "An exploratory data analysis relating exam scores to demographic and socioeconomic factors.",
+        description: "A Pandas / Matplotlib notebook exploring a public Kaggle dataset of student test scores across math, reading, and writing alongside background factors. The headline findings: lunch status shows one of the strongest associations with performance across every subject, test prep links to higher reading and writing scores, and parental education tracks a gradual positive trend — while gender differences turn out to be subject-specific rather than overall.",
+        objective: "Practice end-to-end EDA — cleaning, grouping, and visual storytelling — and surface which factors actually move student outcomes.",
+        stack: ["Python", "Pandas", "Matplotlib", "Jupyter"],
+        links: [
+          { label: "View notebook", href: "https://github.com/evankoza/student-performance-analysis/blob/main/analysis.ipynb" },
+          { label: "Source", href: "https://github.com/evankoza/student-performance-analysis" },
+        ],
         photos: [],
       },
       {
         label: "Lissajous Toy",
         title: "Lissajous Toy",
-        demo: "experiments/lissajous-toy.html",
         lead: "Click any letter to reshape its curve — a playground for the harmonic curves behind the homepage banner.",
         description: "Every letter of a word is drawn as a Lissajous figure: the curve traced by two perpendicular sine waves. Click a letter to randomize its frequency ratio and phase offset and watch the shape morph in real time. It’s the toy I built while working out the math for the animated EVAN curves up top.",
         objective: "Get an intuitive feel for how the a:b frequency ratio and the phase offset control the shape of a Lissajous curve.",
         stack: ["HTML Canvas", "Vanilla JS", "Parametric curves"],
+        links: [
+          { label: "Launch demo", href: "experiments/lissajous-toy.html" },
+          { label: "Source", href: "https://github.com/evankoza/evankoza.github.io/blob/main/experiments/lissajous-toy.html" },
+        ],
         photos: [],
       },
       {
         label: "Portrait Tuner",
         title: "Portrait / ASCII Tuner",
-        demo: "experiments/portrait-tuner.html",
         lead: "The live control panel behind the compile-style hero — drag the sliders to retune the name curves, the pulsing banner, and the ASCII field.",
         description: "A full snapshot of the homepage hero wired to a live tuning panel: sliders for the Lissajous name, the pulsing/glitch KOZA banner, and the drifting monospace field behind everything. It’s the seed for a planned “make your own” toy so visitors can compile their own portrait.",
         objective: "Expose every magic number behind the hero so the look could be dialed in by eye instead of by edit-and-reload — and lay the groundwork for a visitor-facing version.",
         stack: ["HTML Canvas", "Vanilla JS", "Image sampling"],
+        links: [
+          { label: "Launch demo", href: "experiments/portrait-tuner.html" },
+          { label: "Source", href: "https://github.com/evankoza/evankoza.github.io/blob/main/experiments/portrait-tuner.html" },
+        ],
         photos: [],
       },
     ];
@@ -1690,7 +1734,7 @@
     const numEl = document.getElementById("modal-num");
     const titleTextEl = document.getElementById("modal-title-text");
     const leadEl = document.getElementById("modal-lead");
-    const launchEl = document.getElementById("modal-launch");
+    const actionsEl = document.getElementById("modal-actions");
     const photosEl = document.getElementById("modal-photos");
     const descEl = document.getElementById("modal-desc");
     const objEl = document.getElementById("modal-objective");
@@ -1705,7 +1749,20 @@
       descEl.textContent = proj.description;
       objEl.textContent = proj.objective;
 
-      launchEl.href = proj.demo;
+      // action buttons — first link is the filled primary, rest are ghosts.
+      // An off-site link (anything not pointing into /experiments) gets a ↗.
+      actionsEl.innerHTML = "";
+      (proj.links || []).forEach((lnk, k) => {
+        const a = document.createElement("a");
+        const external = !/^experiments\//.test(lnk.href);
+        a.className = "btn " + (k === 0 ? "primary" : "ghost");
+        a.href = lnk.href;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.innerHTML = lnk.label +
+          ' <span class="arrow" aria-hidden="true">' + (external ? "&#8599;" : "&rarr;") + "</span>";
+        actionsEl.appendChild(a);
+      });
 
       // stack chips
       stackEl.innerHTML = "";
