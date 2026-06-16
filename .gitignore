@@ -1,0 +1,10 @@
+# Local tooling / editor config (machine-specific)
+.claude/
+
+# Dependencies — none are committed; the site is zero-dependency
+node_modules/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini

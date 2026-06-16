@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice Rush — Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    /* top-down view of a wooden desk */
+    background:
+      radial-gradient(ellipse at 50% 40%, rgba(255,250,235,0.10), transparent 60%),
+      repeating-linear-gradient(94deg, #6b4a2b 0px, #6b4a2b 38px, #74512f 38px, #74512f 76px),
+      linear-gradient(180deg, #5e4126, #4a3119);
+    user-select: none;
+    cursor: default;
+  }
+  #stage {
+    position: absolute;
+    inset: 0;
+  }
+
+  /* soft desk vignette */
+  #stage::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 240px 60px rgba(0,0,0,0.55);
+  }
+
+  /* the invoice + scanner are centered together as a pair, so the stack sits
+     left of dead-center to leave room for the scanner on its right.
+     group = page(420) + gap(44) + scanner(380) = 844; half = 422.
+     stack center offset = 422 - 210 = 212px left of viewport center. */
+  #stack {
+    position: absolute;
+    top: 50%;
+    left: calc(50% - 212px);
+    transform: translate(-50%, -50%);
+  }
+
+  /* faux pages peeking out underneath, to sell the "stack" */
+  .underpage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 420px;
+    height: 545px;
+    background: #f5f1e6;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 3px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    transform: translate(-50%, -50%);
+  }
+
+  .page {
+    position: relative;
+    width: 420px;
+    height: 545px;
+    background: #fdfaf2;
+    border-radius: 3px;
+    box-shadow: 0 14px 36px rgba(0,0,0,0.45);
+    transition: transform 0.18s ease-out;
+  }
+  .page canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 3px;
+  }
+  /* the printed invoice "content" sits below the ink canvas */
+  .page .sheet { z-index: 1; }
+  .page .ink   { z-index: 2; }
+
+  /* dog-eared "next page" corner cue, bottom-right */
+  #corner {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 70px;
+    height: 70px;
+    z-index: 3;
+    cursor: pointer;
+    background: linear-gradient(135deg, transparent 50%, #e7dec9 50%);
+    border-bottom-right-radius: 3px;
+    box-shadow: -2px -2px 6px rgba(0,0,0,0.12) inset;
+    transition: filter 0.15s;
+  }
+  #corner:hover { filter: brightness(1.08); }
+  #corner::after {
+    content: "▶";
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    font-size: 13px;
+    color: #8a7c5c;
+  }
+
+  /* dog-eared "previous page" corner cue, bottom-left (mirror of #corner) */
+  #corner-back {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 70px;
+    height: 70px;
+    z-index: 3;
+    cursor: pointer;
+    background: linear-gradient(225deg, transparent 50%, #e7dec9 50%);
+    border-bottom-left-radius: 3px;
+    box-shadow: 2px -2px 6px rgba(0,0,0,0.12) inset;
+    transition: filter 0.15s;
+  }
+  #corner-back:hover { filter: brightness(1.08); }
+  #corner-back::after {
+    content: "◀";
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    font-size: 13px;
+    color: #8a7c5c;
+  }
+
+  /* magnifying glass */
+  #loupe {
+    position: fixed;
+    width: 240px;
+    height: 240px;
+    border-radius: 50%;
+    pointer-events: none;
+    display: none;
+    z-index: 50;
+    transform: translate(-50%, -50%);
+    /* glass rim + handle look */
+    border: 10px solid #d9d2c2;
+    box-shadow:
+      0 0 0 3px #b8b0a0,
+      0 10px 30px rgba(0,0,0,0.5),
+      inset 0 0 40px rgba(255,255,255,0.25);
+    background-repeat: no-repeat;
+    /* align the 240px magnified image to the glass's true center; without this the
+       default padding-box origin pushes it 10px (the border width) down-and-right,
+       so drawn ink appears offset from the cursor tip under the glass */
+    background-origin: border-box;
+    background-position: center;
+    overflow: hidden;
+  }
+  #loupe::before {
+    /* glare streak */
+    content: "";
+    position: absolute;
+    top: 14%;
+    left: 18%;
+    width: 40%;
+    height: 22%;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.45), transparent 70%);
+    border-radius: 50%;
+    transform: rotate(-25deg);
+    pointer-events: none;
+  }
+
+  /* receiving scanner (the item feed) — sits just to the right of the invoice, owns the clocks */
+  #scanner {
+    position: fixed;
+    top: 50%;
+    /* sits to the right of the off-center stack so the pair is centered (see #stack):
+       scanner left = group-right(50% + 422px) - scanner-width(380px) = 50% + 42px */
+    left: calc(50% + 42px);
+    transform: translateY(-50%);
+    z-index: 60;
+    width: 380px;
+    background: #1c2530;
+    border: 1px solid #0d1218;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+  .scn-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid #2a3645;
+  }
+  .scn-clock { text-align: center; min-width: 78px; }
+  .scn-clock b {
+    display: block;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: 23px;
+    letter-spacing: 1px;
+    line-height: 1.1;
+  }
+  .scn-clock small {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    margin-top: 3px;
+  }
+  .scn-clock.you b { color: #ffe9a8; }
+  .scn-clock.you small { color: #cdbd8e; }
+  .scn-clock.tgt b { color: #bfe6c2; }
+  .scn-clock.tgt small { color: #8fae92; }
+  .scn-title {
+    font: 700 12px "Segoe UI", sans-serif;
+    letter-spacing: 1.5px;
+    color: #7d8aa0;
+    white-space: nowrap;
+  }
+  .scn-screen {
+    background: #07120c;
+    border: 1px solid #11331f;
+    border-radius: 8px;
+    padding: 16px;
+    height: 236px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    overflow: hidden;
+    box-shadow: inset 0 0 22px rgba(0,255,120,0.08);
+  }
+  #scn-type {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    font: 700 12px "Segoe UI", sans-serif;
+    letter-spacing: 1.5px;
+    color: #06120b;
+    background: #39d98a;
+    padding: 3px 10px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+  }
+  #scn-value {
+    width: 100%;
+    font-family: "Consolas", "SF Mono", monospace;
+    font-size: 25px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #5dffa0;
+    word-break: break-word;
+    text-shadow: 0 0 8px rgba(93,255,160,0.4);
+  }
+  /* readable paragraph styling for the start-screen instructions */
+  .scn-intro {
+    font: 400 13.5px "Segoe UI", system-ui, sans-serif;
+    line-height: 1.5;
+    color: #aebacb;
+    text-shadow: none;
+    word-break: normal;
+  }
+  .scn-intro b { color: #d6e2f2; }
+  .scn-intro b.g { color: #5dffa0; }
+  .scn-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+  }
+  #scn-count {
+    font: 13px "Segoe UI", sans-serif;
+    color: #8fa0b8;
+    font-variant-numeric: tabular-nums;
+  }
+  #scn-next {
+    font: 700 14px "Segoe UI", sans-serif;
+    letter-spacing: 1px;
+    color: #06120b;
+    background: #39d98a;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 17px;
+    cursor: pointer;
+    transition: filter 0.12s, transform 0.06s;
+  }
+  #scn-next:hover { filter: brightness(1.1); }
+  #scn-next:active { transform: translateY(1px); }
+  .scn-btns { display: flex; gap: 8px; align-items: center; }
+  #scn-giveup {
+    font: 600 13px "Segoe UI", sans-serif;
+    color: #c0808a;
+    background: transparent;
+    border: 1px solid #5a3942;
+    border-radius: 8px;
+    padding: 9px 13px;
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+  }
+  #scn-giveup:hover { color: #ff8a98; border-color: #8a4a55; background: rgba(255,90,110,0.08); }
+  #scn-giveup:disabled { opacity: 0.35; cursor: default; }
+</style>
+</head>
+<body oncontextmenu="return false">
+  <div id="stage">
+    <div id="stack">
+      <div class="underpage" style="transform: translate(-50%,-50%) rotate(-2.2deg) translate(-6px,5px);"></div>
+      <div class="underpage" style="transform: translate(-50%,-50%) rotate(1.6deg) translate(7px,3px);"></div>
+      <div class="underpage" style="transform: translate(-50%,-50%) rotate(-0.6deg) translate(2px,8px);"></div>
+      <div class="page" id="page">
+        <canvas class="sheet" id="sheet"></canvas>
+        <canvas class="ink" id="ink"></canvas>
+        <div id="corner-back" title="Previous page"></div>
+        <div id="corner" title="Next page"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="loupe"></div>
+
+  <div id="scanner">
+    <div class="scn-bar">
+      <span class="scn-clock you"><b id="timer-val">00:00.0</b><small>YOUR TIME</small></span>
+      <span class="scn-title">⛟ RECEIVING</span>
+      <span class="scn-clock tgt"><b id="target-val">--:--</b><small>TARGET</small></span>
+    </div>
+    <div class="scn-screen">
+      <div id="scn-type">READY</div>
+      <div id="scn-value">— press START —</div>
+    </div>
+    <div class="scn-foot">
+      <span id="scn-count">0 / 0 scanned</span>
+      <span class="scn-btns">
+        <button id="scn-giveup">Give up</button>
+        <button id="scn-next">START ▶</button>
+      </span>
+    </div>
+  </div>
+
+<script src="../assets/items.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  const PAGE_W = 420, PAGE_H = 545;   // ~letter ratio (0.770) to match the invoice pages
+  const NUM_PAGES = 11;
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  const sheet = document.getElementById('sheet');
+  const ink   = document.getElementById('ink');
+  const sctx  = sheet.getContext('2d');
+  const ictx  = ink.getContext('2d');
+  const loupe = document.getElementById('loupe');
+  const cornerEl = document.getElementById('corner');
+  const cornerBackEl = document.getElementById('corner-back');
+
+  // size canvases for crispness
+  [sheet, ink].forEach(c => {
+    c.width = PAGE_W * DPR;
+    c.height = PAGE_H * DPR;
+  });
+  sctx.scale(DPR, DPR);
+  ictx.scale(DPR, DPR);
+
+  let current = 0;
+  let currentAngle = 0;           // slight random tilt of the top page
+  // each page stores its ink strokes as an offscreen canvas so drawings persist
+  const inkLayers = [];
+  const pageEl = document.getElementById('page');
+
+  // ---- Load the real invoice pages --------------------------------------
+  // Pages are pre-rendered from "Example Invoice.pdf" into assets/invoice/.
+  // To regenerate after swapping the PDF (needs PyMuPDF: pip install pymupdf):
+  //   import fitz, os
+  //   os.makedirs('assets/invoice', exist_ok=True)
+  //   for i,p in enumerate(fitz.open('Example Invoice.pdf')):
+  //       p.get_pixmap(matrix=fitz.Matrix(2,2)).save(f'assets/invoice/page-{i:02d}.png')
+  // Then update NUM_PAGES above to the new page count.
+  const PAGE_SRC = i => '../assets/invoice/page-' + String(i).padStart(2, '0') + '.png';
+
+  const sheets = [];   // one canvas per page, kept at the image's native resolution
+  for (let i = 0; i < NUM_PAGES; i++) {
+    // start with a blank white placeholder so the page renders before the image arrives
+    const c = document.createElement('canvas');
+    c.width = PAGE_W * DPR;
+    c.height = PAGE_H * DPR;
+    const x = c.getContext('2d');
+    x.fillStyle = '#fff';
+    x.fillRect(0, 0, c.width, c.height);
+    sheets.push(c);
+
+    const layer = document.createElement('canvas');
+    layer.width = PAGE_W * DPR;
+    layer.height = PAGE_H * DPR;
+    inkLayers.push(layer);
+
+    // swap in the high-res page image once it loads
+    const img = new Image();
+    img.onload = (() => {
+      const idx = i;
+      return () => {
+        const hc = document.createElement('canvas');
+        hc.width = img.naturalWidth;
+        hc.height = img.naturalHeight;
+        hc.getContext('2d').drawImage(img, 0, 0);
+        sheets[idx] = hc;
+        if (idx === current) renderPage();   // refresh if it's the page on top
+      };
+    })();
+    img.src = PAGE_SRC(i);
+  }
+
+  function renderPage() {
+    sctx.clearRect(0, 0, PAGE_W, PAGE_H);
+    sctx.drawImage(sheets[current], 0, 0, PAGE_W, PAGE_H);
+    // draw saved ink for this page
+    ictx.clearRect(0, 0, PAGE_W, PAGE_H);
+    ictx.drawImage(inkLayers[current], 0, 0, PAGE_W, PAGE_H);
+    pageEl.style.transform = 'rotate(' + currentAngle + 'deg)';
+  }
+
+  // ---- Timer (starts on first action) -----------------------------------
+  const timerValEl = document.getElementById('timer-val');
+  let startTime = null, timerInt = null, finished = false;
+  function fmt(ms) {
+    const tenths = Math.floor(ms / 100) % 10;
+    const totalSec = Math.floor(ms / 1000);
+    const s = totalSec % 60, m = Math.floor(totalSec / 60);
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + '.' + tenths;
+  }
+  function fmtClock(sec) {                // MM:SS (used for the target & final time)
+    sec = Math.round(sec);
+    return String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+  }
+  function startTimer() {
+    if (startTime !== null || finished) return;   // only the first action starts the clock
+    startTime = performance.now();
+    // setInterval (not rAF) so the clock keeps running even if the tab is backgrounded;
+    // the displayed value is a performance.now() delta, so it stays accurate at any tick rate.
+    timerInt = setInterval(() => {
+      if (finished) return;
+      timerValEl.textContent = fmt(performance.now() - startTime);
+    }, 100);
+  }
+  function stopTimer() {
+    finished = true;
+    if (timerInt) { clearInterval(timerInt); timerInt = null; }
+    const ms = startTime === null ? 0 : performance.now() - startTime;
+    timerValEl.textContent = fmt(ms);
+    return ms;
+  }
+
+  // ---- Drawing (left mouse) ---------------------------------------------
+  let drawing = false;
+  let last = null;
+
+  // Map a screen point into the (possibly rotated) page's local coordinates.
+  // The page is rendered at its natural 420x560 size, so 1 screen px = 1 page unit;
+  // we just need to rotate the pointer back by -currentAngle around the page center.
+  function pagePos(e) {
+    const r = ink.getBoundingClientRect();
+    const cx = r.left + r.width / 2;      // bounding-box center == true center even when rotated
+    const cy = r.top + r.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    const a = -currentAngle * Math.PI / 180;
+    const rx = dx * Math.cos(a) - dy * Math.sin(a);
+    const ry = dx * Math.sin(a) + dy * Math.cos(a);
+    return { x: rx + PAGE_W / 2, y: ry + PAGE_H / 2 };
+  }
+
+  function strokeTo(p) {
+    ictx.strokeStyle = '#10367a';        // blue pen ink
+    ictx.lineWidth = 2.4;
+    ictx.lineCap = 'round';
+    ictx.lineJoin = 'round';
+    ictx.beginPath();
+    ictx.moveTo(last.x, last.y);
+    ictx.lineTo(p.x, p.y);
+    ictx.stroke();
+    last = p;
+  }
+
+  ink.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;           // left only
+    startTimer();
+    drawing = true;
+    last = pagePos(e);
+    // dot for a single click
+    ictx.fillStyle = '#10367a';
+    ictx.beginPath();
+    ictx.arc(last.x, last.y, 1.2, 0, Math.PI * 2);
+    ictx.fill();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (drawing) {
+      const p = pagePos(e);
+      strokeTo(p);
+    }
+    if (magnifying) {
+      // if writing while the glass is up, refresh the source so fresh ink shows under it
+      if (drawing) loupeSrc = loupeSourceCanvas();
+      updateLoupe(e);
+    }
+  });
+
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 0 && drawing) {
+      drawing = false;
+      // persist this page's ink into its layer
+      const lctx = inkLayers[current].getContext('2d');
+      lctx.clearRect(0, 0, PAGE_W * DPR, PAGE_H * DPR);
+      lctx.drawImage(ink, 0, 0);
+    }
+  });
+
+  // ---- Magnifier (right mouse held) -------------------------------------
+  let magnifying = false;
+  const ZOOM = 2.4;
+  const LOUPE_R = 120; // half of 240
+
+  // a combined snapshot (sheet + ink) used as the loupe's source image.
+  // built at the page image's NATIVE resolution so the zoom stays sharp.
+  // composites the LIVE `ink` canvas (saved ink + the in-progress stroke) so the
+  // stroke you're currently drawing shows up under the glass, not just old ink.
+  function loupeSourceCanvas() {
+    const src = sheets[current];
+    const c = document.createElement('canvas');
+    c.width = src.width;
+    c.height = src.height;
+    const x = c.getContext('2d');
+    x.drawImage(src, 0, 0);
+    x.drawImage(ink, 0, 0, src.width, src.height); // scale live ink up to match
+    return c;
+  }
+  let loupeSrc = null;
+
+  function updateLoupe(e) {
+    loupe.style.left = e.clientX + 'px';
+    loupe.style.top  = e.clientY + 'px';
+
+    // position on the page in page-local coords (rotation-aware)
+    const p = pagePos(e);
+    const px = p.x, py = p.y;
+
+    // are we over the paper? (test in local coords)
+    const overPaper = px >= 0 && px <= PAGE_W && py >= 0 && py <= PAGE_H;
+
+    if (overPaper && loupeSrc) {
+      // draw zoomed region of the page into the loupe via background canvas
+      loupe.style.backgroundImage = 'url(' + loupeCache(px, py) + ')';
+      loupe.style.backgroundColor = '#fdfaf2';
+    } else {
+      loupe.style.backgroundImage = 'none';
+      loupe.style.backgroundColor = 'rgba(245,241,230,0.55)';
+    }
+  }
+
+  // render zoomed slice to a small canvas and return data URL
+  const _slice = document.createElement('canvas');
+  _slice.width = 240; _slice.height = 240;
+  const _sctx = _slice.getContext('2d');
+  function loupeCache(px, py) {
+    const f = loupeSrc.width / PAGE_W;          // source pixels per page unit
+    const srcSize = (LOUPE_R * 2) / ZOOM;       // page-space region captured
+    const sx = (px - srcSize / 2) * f;
+    const sy = (py - srcSize / 2) * f;
+    _sctx.clearRect(0, 0, 240, 240);
+    _sctx.imageSmoothingEnabled = true;
+    _sctx.drawImage(
+      loupeSrc,
+      sx, sy, srcSize * f, srcSize * f,
+      0, 0, 240, 240
+    );
+    return _slice.toDataURL();
+  }
+
+  window.addEventListener('mousedown', (e) => {
+    if (e.button === 2) {                 // right button
+      magnifying = true;
+      loupeSrc = loupeSourceCanvas();
+      loupe.style.display = 'block';
+      updateLoupe(e);
+    }
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 2) {
+      magnifying = false;
+      loupe.style.display = 'none';
+    }
+  });
+  // keep loupe live as ink changes while magnifying isn't typical; refresh on show
+
+  // ---- Page turning ------------------------------------------------------
+  function turnPage(dir) {
+    startTimer();
+    // save current ink first (in case mid-air)
+    const lctx = inkLayers[current].getContext('2d');
+    lctx.clearRect(0, 0, PAGE_W * DPR, PAGE_H * DPR);
+    lctx.drawImage(ink, 0, 0);
+
+    current = (current + dir + NUM_PAGES) % NUM_PAGES;   // wraps both ways
+    // toss the fresh page down at a slight random angle (-4°..+4°, never dead flat)
+    currentAngle = (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random() * 2.5);
+    renderPage();
+  }
+  cornerEl.addEventListener('click', (e) => { e.stopPropagation(); turnPage(1); });
+  cornerBackEl.addEventListener('click', (e) => { e.stopPropagation(); turnPage(-1); });
+  // block the corners from also starting a stroke
+  cornerEl.addEventListener('mousedown', (e) => e.stopPropagation());
+  cornerBackEl.addEventListener('mousedown', (e) => e.stopPropagation());
+
+  // ---- Receiving scanner feed -------------------------------------------
+  // Every load is a fresh "shipment": 5 random line items DON'T ship, and the
+  // rest are fed back one at a time by a single random identifier (UPC / Article
+  // # / Description). Each shipped item appears exactly once; the missing 5 never
+  // appear — those are the discrepancies the player has to notice on the paper.
+  const ITEMS = (window.SHIPMENT_ITEMS || []).slice();
+  const MISSING_COUNT = 5;
+  const SECONDS_PER_ITEM = 2;            // "time to beat" = 2s per shipped item
+
+  const scnType   = document.getElementById('scn-type');
+  const scnValue  = document.getElementById('scn-value');
+  const scnCount  = document.getElementById('scn-count');
+  const scnNext   = document.getElementById('scn-next');
+  const scnGiveup = document.getElementById('scn-giveup');
+  const targetValEl = document.getElementById('target-val');
+
+  let queue = [], qi = -1, shippedTotal = 0, missingItems = [];
+
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function buildShipment() {
+    const order = shuffle(ITEMS.map((_, i) => i));
+    const missingIdx = new Set(order.slice(0, MISSING_COUNT));
+    missingItems = order.slice(0, MISSING_COUNT).map(i => ITEMS[i]);
+
+    // shipped items, shuffled; each gets ONE random identifier to display
+    queue = shuffle(ITEMS.filter((_, i) => !missingIdx.has(i)));
+    queue.forEach(it => {
+      const fields = [];
+      if (it.upc)  fields.push(['UPC', it.upc]);
+      if (it.art)  fields.push(['ARTICLE #', it.art]);
+      if (it.desc) fields.push(['DESCRIPTION', it.desc]);
+      it._show = fields[Math.floor(Math.random() * fields.length)];
+    });
+    shippedTotal = queue.length;
+    qi = -1;
+
+    targetValEl.textContent = fmtClock(shippedTotal * SECONDS_PER_ITEM);
+    scnType.textContent = 'HOW TO PLAY';
+    scnType.style.background = '';
+    scnGiveup.style.display = '';   // visible again for a fresh run
+    scnGiveup.disabled = true;      // ...but nothing to give up on until you start
+    scnValue.innerHTML =
+      '<div class="scn-intro">' +
+        '<b>Goal:</b> the truck arrived short. Each <b class="g">SCAN NEXT</b> (or <b class="g">Space</b>) ' +
+        'reads back one received item by its UPC, article #, or description &mdash; find it on the invoice and ' +
+        '<b class="g">left-drag</b> the pen to check it off.<br><br>' +
+        '<b class="g">Right-drag</b> = magnifier &nbsp;·&nbsp; <b class="g">bottom-right corner</b> = next page.<br><br>' +
+        '<b>' + MISSING_COUNT + ' items never scan</b> &mdash; those didn\'t ship. Spot them before the clock beats you.' +
+      '</div>';
+    scnCount.textContent = '0 / ' + shippedTotal + ' scanned';
+    scnNext.textContent = 'START ▶';
+  }
+
+  function nextScan() {
+    startTimer();
+    qi++;
+    if (qi >= queue.length) { finishShipment(); return; }
+    scnGiveup.disabled = false;   // a scan is in progress — quitting is now possible
+    const it = queue[qi];
+    scnType.textContent  = it._show[0];
+    scnType.style.background = '';
+    scnValue.textContent = it._show[1];
+    scnCount.textContent = (qi + 1) + ' / ' + shippedTotal + ' scanned';
+    scnNext.textContent  = (qi + 1 === queue.length) ? 'FINISH ▶' : 'SCAN NEXT ▶';
+  }
+
+  function finishShipment() {
+    const ms = stopTimer();
+    const target = shippedTotal * SECONDS_PER_ITEM;
+    const beat = (ms / 1000) <= target;
+    scnType.textContent = beat ? '✓ BEAT THE CLOCK' : '✗ TOO SLOW';
+    scnType.style.background = beat ? '#39d98a' : '#e2664f';
+    scnValue.innerHTML =
+      '<div style="font-size:14px;color:#cfe">Your time ' + fmtClock(ms / 1000) +
+      ' &nbsp;·&nbsp; target ' + fmtClock(target) + '</div>' +
+      '<div style="font-size:10px;letter-spacing:1px;color:#9fb;margin-top:8px">DID NOT SHIP (' + missingItems.length + '):</div>' +
+      '<div style="font-size:11px;line-height:1.45;color:#bcd;margin-top:2px">' +
+        missingItems.map(m => '• ' + m.desc).join('<br>') + '</div>';
+    scnCount.textContent = shippedTotal + ' / ' + shippedTotal + ' scanned';
+    scnNext.textContent = 'NEW SHIPMENT ⟳';
+    scnGiveup.style.display = 'none';   // keep the footer single-line at game over
+  }
+
+  function giveUp() {
+    const ms = stopTimer();
+    const done = qi + 1;                       // items revealed before quitting
+    const target = shippedTotal * SECONDS_PER_ITEM;
+    scnType.textContent = 'DNF';
+    scnType.style.background = '#e2664f';
+
+    // extrapolate: at the pace they managed, how long would the whole shipment take?
+    let projection;
+    if (done > 0) {
+      const projected = (ms / 1000) / done * shippedTotal;   // seconds to do all of them
+      projection =
+        '<div style="font-size:11px;color:#ffd9a0;margin-top:3px">At this pace, all ' + shippedTotal +
+          ' &asymp; <b style="color:#ffb04a">' + fmtClock(projected) + '</b> ' +
+          '<span style="color:#9aa">(target ' + fmtClock(target) + ')</span></div>';
+    } else {
+      projection = '<div style="font-size:11px;color:#9aa;margin-top:3px">No scans yet &mdash; no pace to estimate.</div>';
+    }
+
+    // compact layout so the missing-items reveal still fits the fixed 188px screen
+    scnValue.innerHTML =
+      '<div style="font-size:15px;color:#ff8a98;font-weight:700;line-height:1.1">DID NOT FINISH</div>' +
+      '<div style="font-size:11px;color:#cfe;margin-top:3px">Scanned ' + done + ' / ' + shippedTotal +
+        ' in ' + fmtClock(ms / 1000) + '</div>' +
+      projection +
+      '<div style="font-size:9px;letter-spacing:1px;color:#9fb;margin-top:7px">DIDN\'T SHIP (' + missingItems.length + '):</div>' +
+      '<div style="font-size:10px;line-height:1.3;color:#bcd">' +
+        missingItems.map(m => '• ' + m.desc).join('<br>') + '</div>';
+    scnNext.textContent = 'NEW SHIPMENT ⟳';
+    scnGiveup.style.display = 'none';   // keep the footer single-line at game over
+  }
+
+  function resetGame() {
+    inkLayers.forEach(l => l.getContext('2d').clearRect(0, 0, l.width, l.height));
+    current = 0;
+    currentAngle = 0;
+    startTime = null;
+    finished = false;
+    if (timerInt) { clearInterval(timerInt); timerInt = null; }
+    timerValEl.textContent = '00:00.0';
+    scnType.style.background = '';
+    renderPage();
+    buildShipment();
+  }
+
+  scnNext.addEventListener('click', () => {
+    if (scnNext.textContent.indexOf('NEW SHIPMENT') === 0) { resetGame(); return; }
+    if (finished) return;
+    nextScan();
+  });
+  scnGiveup.addEventListener('click', () => {
+    if (scnGiveup.disabled || finished) return;
+    giveUp();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); scnNext.click(); }
+  });
+
+  buildShipment();
+  renderPage();
+})();
+</script>
+</body>
+</html>

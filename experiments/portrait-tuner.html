@@ -1,0 +1,2249 @@
+<!DOCTYPE html>
+<!--
+  PRESERVED TUNER / TOY SEED
+  Optimized homepage hero + live tuning panel, kept intact as the seed for the
+  interactive "make your own" toy. Carries every perf fix from index.html (hero
+  pauses off-screen, 700-sample curves, 30fps background field that pauses during
+  drag AND native scroll, coarser grid). Tuner (bottom-right) force-shown; asset
+  paths rewritten to ../ so this runs from /experiments.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Portrait / ASCII Tuner — toy seed</title>
+<!-- first head-spin frame is the LCP element — fetch it before the script runs -->
+<link rel="preload" as="image" href="../assets/portrait/img0.jpeg" />
+<style>
+  :root {
+    /* cursor.com/compile-style warm neutral canvas */
+    --bg: #ECEAE3;
+    --ink: #1c1b18;
+    --pumpkin: #C95000;
+    --pumpkin-bright: #F2622E;
+    --ink-muted: rgba(28, 27, 24, 0.58);
+    --ink-faint: rgba(28, 27, 24, 0.40);
+    --line: rgba(28, 27, 24, 0.14);
+    --paper: #F4F2EB;        /* card surface, a touch lighter than the canvas */
+    --mono: ui-monospace, Menlo, Consolas, "Courier New", monospace;
+    --maxw: 1100px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    /* page now scrolls; the giant portrait/banner bleed is clipped per-screen,
+       so only the horizontal axis needs clamping here. */
+    overflow-x: hidden;
+    line-height: 1.5;
+  }
+
+  /* First screen = full viewport: the animated hero fills the space while the
+     trust bar is pinned to the bottom edge, so the face dominates and the logo
+     row rests just above the fold. The hero lives in its own clip box so the
+     over-scaled portrait/banner bleed is cut right above the logos (instead of
+     painting over them). */
+  .intro {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .hero-clip {
+    flex: 1 1 auto;
+    min-height: 0;          /* let the flex child shrink so overflow can clip */
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .hero {
+    position: relative;
+    width: min(1100px, 92vw);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  /* ── shared section scaffolding ─────────────────────────── */
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--pumpkin);
+  }
+  .eyebrow .prompt { color: var(--ink-faint); }
+
+  /* ── Trust bar (pinned to bottom of hero screen) + punchline ─ */
+  .trust-bar {
+    flex: 0 0 auto;
+    border-top: 1px solid var(--line);          /* divider between the face and the strip */
+    padding: clamp(14px, 1.8vw, 20px) 0 20px;   /* logo row rests ~20px above the fold */
+    text-align: center;
+  }
+  .trust-bar .eyebrow {
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: clamp(8px, 1.1vw, 12px);
+    padding: 0 24px;
+  }
+  .marquee {
+    overflow: hidden;
+    padding: 6px 0;   /* vertical breathing room so the hover scale(1.12) isn't clipped at the top/bottom */
+    -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 10%, #000 90%, transparent 100%);
+            mask-image: linear-gradient(90deg, transparent 0%, #000 10%, #000 90%, transparent 100%);
+  }
+  /* Seamless loop note: the track holds two identical copies and animates to
+     -50%. Spacing lives on each .logo's side margins (NOT flex `gap`) — with
+     `gap`, -50% lands half a gap off and the loop visibly jumps. Per-item
+     margin makes one copy's width an exact divisor, so the wrap is invisible. */
+  .marquee-track {
+    display: flex;
+    align-items: center;
+    width: max-content;
+    animation: marquee 38s linear infinite;
+  }
+  .marquee:hover .marquee-track { animation-play-state: paused; }
+  @keyframes marquee {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  /* monochrome by default so the wall reads calm; the real brand colour
+     blooms in on hover (mirrors the original muted → light-up treatment). */
+  /* anchor wraps each logo: it's the flex item, so the inter-logo spacing
+     lives here (moved off .logo) to keep the seamless loop maths intact. */
+  .logo-link {
+    display: block;
+    margin: 0 clamp(30px, 4vw, 58px);   /* spacing → between logos = 2× this */
+  }
+  .logo {
+    height: clamp(20px, 2vw, 27px);
+    width: auto;
+    display: block;
+    filter: grayscale(100%);
+    opacity: 0.42;
+    transition: opacity 0.2s ease, filter 0.2s ease, transform 0.2s ease;
+  }
+  .logo-link:hover .logo {
+    opacity: 1;
+    filter: grayscale(0%);
+    transform: scale(1.12);
+  }
+
+  .punchline-section {
+    padding: clamp(28px, 4vw, 44px) 24px clamp(52px, 8vw, 88px);
+    text-align: center;
+  }
+  .punchline {
+    font-size: clamp(1.5rem, 4.5vw, 2.6rem);
+    font-style: italic;
+    font-weight: 600;
+    color: var(--pumpkin);
+    letter-spacing: -0.01em;
+  }
+  .punchline .small {
+    display: block;
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-style: normal;
+    font-weight: 400;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* ── ABOUT ME ───────────────────────────────────────────── */
+  .about {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding: clamp(64px, 10vw, 128px) 24px;
+  }
+  .about > .eyebrow { display: block; margin-bottom: 14px; }
+  .about-grid {
+    display: grid;
+    grid-template-columns: 0.85fr 1.15fr;
+    gap: clamp(40px, 6vw, 88px);
+    align-items: start;
+  }
+
+  /* left column — sticky identity card */
+  .about-meta { position: sticky; top: 40px; }
+  .about-name {
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    margin-bottom: 12px;
+  }
+  .about-role {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--pumpkin);
+    letter-spacing: 0.02em;
+    margin-bottom: 18px;
+  }
+  .about-tagline {
+    font-size: 0.98rem;
+    color: var(--ink-muted);
+    line-height: 1.6;
+    max-width: 34ch;
+    margin-bottom: 28px;
+  }
+
+  .meta-block { margin-top: 28px; }
+  .meta-h {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .contact-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .contact-list a, .contact-list span {
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.92rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .contact-list a:hover { color: var(--pumpkin); }
+  .contact-list .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+    width: 16px;
+    flex-shrink: 0;
+  }
+
+  .edu-item { margin-bottom: 16px; }
+  .edu-item:last-child { margin-bottom: 0; }
+  .edu-deg { font-weight: 600; font-size: 0.95rem; line-height: 1.3; }
+  .edu-school { font-size: 0.88rem; color: var(--ink-muted); }
+  .edu-when {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--pumpkin);
+    letter-spacing: 0.02em;
+    margin-top: 2px;
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--ink-muted);
+    background: var(--paper);
+  }
+
+  /* right column — experience timeline */
+  .about-body { min-width: 0; }
+  .body-h {
+    font-size: 1rem;
+    font-family: var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 22px;
+  }
+  .about-body .body-h + * { margin-top: 0; }
+  .body-h:not(:first-child) { margin-top: 56px; }
+
+  .xp {
+    position: relative;
+    padding: 0 0 32px 26px;
+    border-left: 2px solid var(--line);
+  }
+  .xp:last-child { padding-bottom: 0; }
+  .xp::before {
+    content: "";
+    position: absolute;
+    left: -7px; top: 4px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--pumpkin);
+    box-shadow: 0 0 0 4px var(--bg);
+  }
+  .xp-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 16px;
+    margin-bottom: 4px;
+  }
+  .xp-role { font-size: 1.12rem; font-weight: 700; letter-spacing: -0.01em; }
+  .xp-when {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+  .xp-org { font-size: 0.92rem; color: var(--pumpkin); font-weight: 600; margin-bottom: 12px; }
+  .xp-list { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+  .xp-list li {
+    position: relative;
+    padding-left: 18px;
+    font-size: 0.94rem;
+    color: var(--ink-muted);
+    line-height: 1.55;
+  }
+  .xp-list li::before {
+    content: "›";
+    position: absolute; left: 0; top: -1px;
+    color: var(--pumpkin);
+    font-weight: 700;
+  }
+  .xp-list li strong { color: var(--ink); font-weight: 600; }
+
+  /* highlighted project callout */
+  .project {
+    margin-top: 14px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--pumpkin);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .project-t { font-size: 0.92rem; font-weight: 700; margin-bottom: 6px; }
+  .project-d { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.55; margin-bottom: 12px; }
+  .project .chips .chip { background: var(--bg); }
+
+  /* footer */
+  .site-footer {
+    border-top: 1px solid var(--line);
+    padding: 40px 24px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+  }
+  .site-footer a { color: var(--pumpkin); text-decoration: none; }
+  .site-footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 760px) {
+    .about-grid { grid-template-columns: 1fr; gap: 48px; }
+    .about-meta { position: static; }
+    .xp-head { gap: 2px; }
+  }
+
+  /* Rotating ASCII portrait — the deepest layer, sitting behind the KOZA
+     banner and the EVAN curves. cursor.com/compile-style character mosaic.
+     Centred on the hero; nudged down (--peye) so the eyes land on the banner. */
+  .portrait {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, calc(-50% + var(--peye, 0px)));
+    z-index: 0;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* KOZA banner sitting behind the EVAN curves, in front of the portrait.
+     Scaled well past the viewport so its edges bleed off-screen (clipped by
+     body overflow). The orange field covers the portrait's eyes; the face
+     shows through the transparent KOZA letters and above/below the bar. */
+  .banner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, calc(-50% + var(--by, 0px))) scale(var(--bscale, 1));
+    width: auto;           /* height is set in JS; width follows 1739:605 ratio */
+    max-width: none;
+    z-index: 1;
+    pointer-events: none;
+    user-select: none;
+    image-rendering: pixelated;  /* keep blocks crisp when pulsing */
+  }
+
+  /* the four parametric curves, one per "letter" of EVAN */
+  .curves {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    width: 100%;
+    /* each cell is a square */
+    transform: translateY(var(--ey, 0px)) scale(var(--escale, 1));  /* EVAN scale + y (e·scl/e·y) */
+    transform-origin: center;
+  }
+
+  .cell {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    cursor: pointer;
+  }
+
+  .cell canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* ---- TEMPORARY tuning panel (remove when values are locked) ---- */
+  #tuner {
+    display: block;   /* hidden for now — kept in the markup so it can be re-enabled for tuning */
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 260px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 12px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+    font-size: 12px;
+    z-index: 10;
+    user-select: none;
+  }
+  #tuner h2 {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.5;
+    margin-bottom: 10px;
+    cursor: pointer;
+    user-select: none;
+  }
+  #tuner h2 .caret {
+    display: inline-block;
+    transition: transform 0.15s ease;
+  }
+  /* collapsed: show only the header, hide the controls */
+  #tuner.collapsed { width: auto; }
+  #tuner.collapsed h2 { margin-bottom: 0; }
+  #tuner.collapsed .tuner-body { display: none; }
+  #tuner:not(.collapsed) h2 .caret { transform: rotate(90deg); }
+  #tuner .row {
+    display: grid;
+    grid-template-columns: 40px 1fr 42px;
+    align-items: center;
+    gap: 8px;
+    margin: 7px 0;
+  }
+  #tuner .row .dot {
+    width: 11px; height: 11px; border-radius: 50%;
+  }
+  #tuner .row .lbl {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    opacity: 0.45;
+  }
+  #tuner .row input[type="range"] { width: 100%; accent-color: #444; }
+  #tuner .row .val {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    opacity: 0.7;
+  }
+  #tuner .divider { height: 1px; background: rgba(0,0,0,0.08); margin: 12px 0; }
+  #tuner .hint { opacity: 0.45; font-size: 10.5px; line-height: 1.4; margin-top: 10px; }
+
+  /* ══ PROJECTS — Blossom-style masonry carousel ═══════════════
+     A 3-row-tall horizontal grid with `grid-auto-flow: column dense`
+     so different-sized tiles pack into a disjunct mosaic (mirrors the
+     blossom-carousel masonry example). Behind it, a faint flowing
+     monospace character field — obscured by the tiles, glimpsed in the
+     gaps and margins. */
+  .projects {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(56px, 9vw, 120px) 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);   /* full-width divider into About */
+  }
+  .projects-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .projects-inner { position: relative; z-index: 1; }
+  .projects-head {
+    max-width: var(--maxw);
+    margin: 0 auto clamp(22px, 3vw, 34px);
+    padding: 0 24px;
+  }
+  .projects-head .eyebrow { display: block; margin-bottom: 12px; }
+  .projects-h {
+    font-size: clamp(1.9rem, 5.4vw, 3.2rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 0.98;
+  }
+  .projects-sub {
+    margin-top: 12px;
+    color: var(--ink-muted);
+    font-size: 1rem;
+    max-width: 50ch;
+  }
+
+  /* the horizontal scroller (native scroll + JS drag/momentum + infinite
+     wrap on top). No scroll-snap: this is a free, endlessly-looping wall.
+     overscroll-behavior keeps horizontal flings from leaking to the page,
+     while a vertical wheel just falls through to the page (no hijack). */
+  .carousel {
+    position: relative;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    cursor: grab;
+    /* generous top/bottom padding sits INSIDE the overflow clip, so the hover
+       lift + drop-shadow on the top and bottom rows have room to render
+       instead of being sheared off at the scroller's edge. The shadow reaches
+       ~0 20px 44px, so ~36px above / ~56px below clears it fully. */
+    padding: 36px clamp(24px, 6vw, 96px) 56px;
+    scrollbar-width: none;
+  }
+  .carousel::-webkit-scrollbar { display: none; }
+  .carousel.dragging { cursor: grabbing; }
+  .carousel.dragging .tile { pointer-events: none; }
+
+  /* the disjunct grid — the heart of the reference look. Four rows tall; a
+     balanced mix of squares, landscapes and portraits packs into an organic
+     mosaic (no tall-skinny columns — there are no 1×4 tiles). */
+  .masonry {
+    display: grid;
+    grid-auto-flow: column dense;
+    grid-template-rows: repeat(4, 1fr);
+    grid-auto-columns: clamp(188px, 20vw, 240px);
+    gap: clamp(12px, 1.4vw, 18px);
+    height: clamp(520px, 72vh, 760px);
+    width: max-content;
+  }
+
+  .tile {
+    position: relative;
+    border: none;
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--pumpkin);
+    color: #fff;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    isolation: isolate;
+    transition: transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s ease, filter .35s ease;
+  }
+  /* a touch of depth so the flat orange reads like a thumbnail surface.
+     Plain blending (no mix-blend-mode) keeps each of the many tiles off its
+     own compositing layer — much lighter with dozens of looping tiles. */
+  .tile::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(120,40,0,.20));
+  }
+  .tile .num {
+    position: relative;
+    z-index: 2;
+    font-size: clamp(2rem, 4vw, 3.6rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    text-shadow: 0 2px 16px rgba(0,0,0,.20);
+  }
+  .tile .num .hash {
+    opacity: .5;
+    font-size: .55em;
+    vertical-align: super;
+    margin-right: .04em;
+  }
+  .tile:hover,
+  .tile:focus-visible {
+    transform: translateY(-5px) scale(1.014);
+    box-shadow: 0 20px 44px rgba(201,80,0,.30);
+    filter: brightness(1.05);
+    outline: none;
+  }
+  /* a varied vocabulary of shapes — no tall-skinny tiles.
+     q = 2×2 square · l = 2×1 landscape · p = 1×2 portrait · b = 2×4 hero */
+  .tile.q { grid-column: span 2; grid-row: span 2; }
+  .tile.l { grid-column: span 2; grid-row: span 1; }
+  .tile.p { grid-column: span 1; grid-row: span 2; }
+  .tile.b { grid-column: span 2; grid-row: span 4; }
+
+  .carousel-hint {
+    max-width: var(--maxw);
+    margin: 8px auto 0;
+    padding: 0 24px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  /* ══ Project modal ═══════════════════════════════════════════
+     Darkens the page and floats a faint, slower character field
+     behind the panel so the eye lands on the modal, not the text. */
+  .modal-root {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(16px, 4vw, 48px);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .35s ease, visibility 0s linear .35s;
+  }
+  .modal-root.open {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity .35s ease;
+  }
+  /* scrim darkens the page first (z0); the character field is painted ON TOP
+     of the darkening (z1) so its faint glyphs glow around — and frame — the
+     modal panel (z2) rather than being buried under the scrim. */
+  .modal-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: radial-gradient(120% 120% at 50% 38%, rgba(14,12,9,.60), rgba(14,12,9,.88));
+    -webkit-backdrop-filter: blur(2px);
+            backdrop-filter: blur(2px);
+  }
+  .modal-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+  }
+  .modal {
+    position: relative;
+    z-index: 2;
+    width: min(900px, 100%);
+    max-height: 88vh;
+    overflow-y: auto;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: 0 40px 120px rgba(0,0,0,.55);
+    padding: clamp(26px, 4vw, 46px);
+    transform: translateY(16px) scale(.985);
+    opacity: 0;
+    transition: transform .4s cubic-bezier(.2,.7,.2,1), opacity .4s ease;
+  }
+  .modal-root.open .modal { transform: none; opacity: 1; }
+  .modal-close {
+    position: absolute;
+    top: 14px; right: 14px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 20px; line-height: 1;
+    cursor: pointer;
+    display: grid; place-items: center;
+    transition: background .2s ease, color .2s ease, transform .2s ease;
+  }
+  .modal-close:hover { background: var(--pumpkin); color: #fff; transform: rotate(90deg); }
+
+  .modal .eyebrow { display: block; margin-bottom: 14px; }
+  .modal-title {
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .modal-title .hash { color: var(--pumpkin); }
+  .modal-lead {
+    margin-top: 12px;
+    font-size: 1.05rem;
+    color: var(--ink-muted);
+    line-height: 1.6;
+    max-width: 56ch;
+  }
+  .modal-photos {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 26px 0;
+  }
+  .modal-photos .photo {
+    aspect-ratio: 4 / 3;
+    border-radius: 12px;
+    background:
+      repeating-linear-gradient(45deg, rgba(201,80,0,.10) 0 10px, rgba(201,80,0,.04) 10px 20px),
+      var(--bg);
+    border: 1px solid var(--line);
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .18em;
+    color: var(--ink-faint);
+  }
+  .modal-sections {
+    display: grid;
+    gap: 26px;
+    margin-top: 4px;
+  }
+  .modal-sections h4 {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .modal-sections p {
+    font-size: 0.96rem;
+    color: var(--ink-muted);
+    line-height: 1.65;
+    max-width: 64ch;
+  }
+
+  @media (max-width: 560px) {
+    .modal-photos { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+ <div class="intro">
+  <div class="hero-clip">
+   <main class="hero">
+    <canvas class="portrait" id="portrait" aria-label="Evan Koza, rotating portrait"></canvas>
+    <canvas class="banner" id="banner" width="1739" height="605" aria-label="KOZA"></canvas>
+    <section class="curves" id="curves" aria-label="EVAN">
+      <div class="cell" data-letter="E"></div>
+      <div class="cell" data-letter="V"></div>
+      <div class="cell" data-letter="A"></div>
+      <div class="cell" data-letter="N"></div>
+    </section>
+   </main>
+  </div><!-- /hero-clip -->
+
+  <!-- Trust bar pinned to the bottom of the first screen: the logo row rests
+       ~20px above the fold so the animated face keeps the spotlight. Seamless
+       marquee (DIGITS trust-ticker pattern) — cloned once by JS for the loop. -->
+  <div class="trust-bar">
+    <span class="eyebrow">Trusted by the world&rsquo;s leading companies</span>
+    <div class="marquee">
+      <div class="marquee-track" id="marquee-track">
+        <a class="logo-link" href="https://www.google.com"  target="_blank" rel="noopener"><img class="logo" src="../assets/logos/google.svg"  alt="Google"  loading="lazy"></a>
+        <a class="logo-link" href="https://www.apple.com"   target="_blank" rel="noopener"><img class="logo" src="../assets/logos/apple.svg"   alt="Apple"   loading="lazy"></a>
+        <a class="logo-link" href="https://www.meta.com"    target="_blank" rel="noopener"><img class="logo" src="../assets/logos/meta.svg"    alt="Meta"    loading="lazy"></a>
+        <a class="logo-link" href="https://www.netflix.com" target="_blank" rel="noopener"><img class="logo" src="../assets/logos/netflix.svg" alt="Netflix" loading="lazy"></a>
+        <a class="logo-link" href="https://www.nvidia.com"  target="_blank" rel="noopener"><img class="logo" src="../assets/logos/nvidia.svg"  alt="NVIDIA"  loading="lazy"></a>
+        <a class="logo-link" href="https://www.tesla.com"   target="_blank" rel="noopener"><img class="logo" src="../assets/logos/tesla.svg"   alt="Tesla"   loading="lazy"></a>
+        <a class="logo-link" href="https://www.spotify.com" target="_blank" rel="noopener"><img class="logo" src="../assets/logos/spotify.svg" alt="Spotify" loading="lazy"></a>
+        <a class="logo-link" href="https://www.stripe.com"  target="_blank" rel="noopener"><img class="logo" src="../assets/logos/stripe.svg"  alt="Stripe"  loading="lazy"></a>
+        <a class="logo-link" href="https://www.airbnb.com"  target="_blank" rel="noopener"><img class="logo" src="../assets/logos/airbnb.svg"  alt="Airbnb"  loading="lazy"></a>
+        <a class="logo-link" href="https://www.uber.com"    target="_blank" rel="noopener"><img class="logo" src="../assets/logos/uber.svg"    alt="Uber"    loading="lazy"></a>
+        <a class="logo-link" href="https://www.shopify.com" target="_blank" rel="noopener"><img class="logo" src="../assets/logos/shopify.svg" alt="Shopify" loading="lazy"></a>
+        <a class="logo-link" href="https://www.paypal.com"  target="_blank" rel="noopener"><img class="logo" src="../assets/logos/paypal.svg"  alt="PayPal"  loading="lazy"></a>
+        <a class="logo-link" href="https://www.intel.com"   target="_blank" rel="noopener"><img class="logo" src="../assets/logos/intel.svg"   alt="Intel"   loading="lazy"></a>
+      </div>
+    </div>
+  </div><!-- /trust-bar -->
+ </div><!-- /intro -->
+
+
+  <!-- ══ PUNCHLINE ═══════════════════════════════════════════ -->
+  <section class="punchline-section" id="partners">
+    <p class="punchline">
+      &hellip; haha, i wish
+      <span class="small">give it a few years</span>
+    </p>
+  </section>
+
+
+  <!-- ══ PROJECTS ════════════════════════════════════════════
+       Blossom-style masonry carousel: a 3-row horizontal grid of
+       differently-sized placeholder tiles. Tiles + the flowing
+       character backdrop are wired up in the script below. -->
+  <section class="projects" id="projects">
+    <canvas class="projects-bg" id="projects-bg" aria-hidden="true"></canvas>
+    <div class="projects-inner">
+      <div class="projects-head">
+        <span class="eyebrow"><span class="prompt">~ $</span> ls ./projects</span>
+        <h2 class="projects-h">Selected Work</h2>
+        <p class="projects-sub">
+          A few things I&rsquo;ve built &mdash; drag through the wall and open any tile for the details.
+        </p>
+      </div>
+      <div class="carousel" id="carousel">
+        <div class="masonry" id="masonry"><!-- tiles injected by JS --></div>
+      </div>
+      <p class="carousel-hint">drag&nbsp;·&nbsp;scroll&nbsp;·&nbsp;click a tile &rarr;</p>
+    </div>
+  </section>
+
+
+  <!-- ══ ABOUT ME ════════════════════════════════════════════
+       Reformatted from the DIGITS media/talk grid: sticky identity
+       column on the left, scrolling experience timeline on the right. -->
+  <section class="about" id="about">
+    <span class="eyebrow"><span class="prompt">~ $</span> whoami</span>
+
+    <div class="about-grid">
+
+      <!-- left: name · contact · education · skills (sticky) -->
+      <aside class="about-meta">
+        <h1 class="about-name">EVAN<br>KOZA</h1>
+        <p class="about-role">CS &amp; Data Science @ Western University</p>
+        <p class="about-tagline">
+          Computer Science &amp; Data Science student seeking a data engineering / software
+          development internship &mdash; eager to learn modern industry practices and build
+          data-driven applications alongside a team.
+        </p>
+
+        <div class="meta-block">
+          <p class="meta-h">Contact</p>
+          <ul class="contact-list">
+            <li><a href="mailto:evankoza@hotmail.com"><span class="tag">@</span>evankoza@hotmail.com</a></li>
+            <li><a href="tel:+12263785926"><span class="tag">tel</span>+1 (226) 378-5926</a></li>
+            <li><span><span class="tag">loc</span>London, ON</span></li>
+          </ul>
+        </div>
+
+        <div class="meta-block">
+          <p class="meta-h">Education</p>
+          <div class="edu-item">
+            <div class="edu-deg">Honours BSc, Computer Science</div>
+            <div class="edu-school">Western University</div>
+            <div class="edu-when">Expected 2028</div>
+          </div>
+          <div class="edu-item">
+            <div class="edu-deg">Honours BSc, Data Science</div>
+            <div class="edu-school">Western University</div>
+            <div class="edu-when">Expected 2028</div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- right: work + personal experience -->
+      <div class="about-body">
+
+        <h2 class="body-h">Work Experience</h2>
+
+        <div class="xp">
+          <div class="xp-head">
+            <span class="xp-role">Part-Time Home Clerk</span>
+            <span class="xp-when">Jul 2021 &ndash; Present</span>
+          </div>
+          <div class="xp-org">Real Canadian Superstore &middot; London, ON</div>
+          <ul class="xp-list">
+            <li>Day-to-day ownership of inventory, invoicing, plano-grams, merchandising, and maintenance.</li>
+            <li>Worked with the team to keep store <strong>02812&rsquo;s Home department the most profitable of any RCSS in Ontario</strong>.</li>
+            <li>Built a personal automation tool to streamline manual invoicing by integrating store-issued inventory systems &mdash; significantly improving my individual workflow.</li>
+          </ul>
+          <div class="project">
+            <div class="project-t">Invoicing automation tool</div>
+            <div class="project-d">
+              Reads store inventory PDFs, scans barcodes, extracts tabular data, and reconciles
+              it against a local database behind a simple web UI.
+            </div>
+            <div class="chips">
+              <span class="chip">Python</span><span class="chip">FastAPI</span><span class="chip">OpenCV</span>
+              <span class="chip">Barcode scan</span><span class="chip">PDF extraction</span><span class="chip">SQLite</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="xp">
+          <div class="xp-head">
+            <span class="xp-role">Temporary Labourer</span>
+            <span class="xp-when">May &ndash; Sep 2025</span>
+          </div>
+          <div class="xp-org">City of London &middot; Roads Division</div>
+          <ul class="xp-list">
+            <li>Independent operation of city-owned vehicles &mdash; trucks, skid-steers, and sidewalk sweepers.</li>
+            <li>Maintained downtown beats with independent crews and fulfilled requests from other departments and dispatch.</li>
+            <li>Averaged <strong>64-hour work weeks</strong> over the summer, split 40:24 between the Labourer and Home Clerk roles.</li>
+          </ul>
+        </div>
+
+        <h2 class="body-h">Personal Experience</h2>
+
+        <div class="xp">
+          <div class="xp-head">
+            <span class="xp-role">Competitive Programming</span>
+            <span class="xp-when">2023 &ndash; 2024</span>
+          </div>
+          <div class="xp-org">Canadian Computing Competition &middot; LDCSB</div>
+          <ul class="xp-list">
+            <li>Competed in the <strong>2023 &amp; 2024 Canadian Computing Competition</strong>.</li>
+            <li>Competed in the <strong>2024 LDCSB Coding Competition</strong>.</li>
+          </ul>
+        </div>
+
+        <div class="xp">
+          <div class="xp-head">
+            <span class="xp-role">Game Modding</span>
+            <span class="xp-when">Ongoing</span>
+          </div>
+          <div class="xp-org">Open-source dev &amp; community libraries</div>
+          <ul class="xp-list">
+            <li>Build and ship mods for games with large modding scenes &mdash; <strong>Project Zomboid, RimWorld, Minecraft</strong>, and more.</li>
+            <li>Work across <strong>C#, Lua, and Java</strong> using open-source developer and community-run tooling.</li>
+          </ul>
+        </div>
+
+        <div class="xp">
+          <div class="xp-head">
+            <span class="xp-role">Off the keyboard</span>
+          </div>
+          <div class="xp-org">Sport</div>
+          <ul class="xp-list">
+            <li>Squash, tennis, skiing, and snowboarding.</li>
+          </ul>
+        </div>
+
+      </div><!-- /about-body -->
+    </div><!-- /about-grid -->
+  </section>
+
+  <!-- ══ PROJECT MODAL ═══════════════════════════════════════
+       Placeholder content (description / objective / photos / stack).
+       Populated per-tile in the script; darkened backdrop + its own
+       faint character field keep the focus on the panel. -->
+  <div class="modal-root" id="modal-root" aria-hidden="true">
+    <canvas class="modal-bg" id="modal-bg" aria-hidden="true"></canvas>
+    <div class="modal-scrim"></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button class="modal-close" id="modal-close" aria-label="Close">&times;</button>
+      <span class="eyebrow"><span class="prompt">~ $</span> cat project.md</span>
+      <h3 class="modal-title" id="modal-title">Project <span class="hash" id="modal-num">01</span></h3>
+      <p class="modal-lead" id="modal-lead">A short one-line summary of the project lives here.</p>
+
+      <div class="modal-photos" id="modal-photos">
+        <div class="photo">IMG&nbsp;01</div>
+        <div class="photo">IMG&nbsp;02</div>
+        <div class="photo">IMG&nbsp;03</div>
+      </div>
+
+      <div class="modal-sections">
+        <section>
+          <h4>Description</h4>
+          <p>Placeholder description &mdash; what the project is, the context it was built in, and the part you&rsquo;re most proud of. Swap this copy out per project later.</p>
+        </section>
+        <section>
+          <h4>Objective</h4>
+          <p>Placeholder objective &mdash; the problem this set out to solve and what &ldquo;done&rdquo; looked like.</p>
+        </section>
+        <section>
+          <h4>Stack</h4>
+          <div class="chips">
+            <span class="chip">Placeholder</span>
+            <span class="chip">Tech</span>
+            <span class="chip">Goes</span>
+            <span class="chip">Here</span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+
+  <footer class="site-footer">
+    &copy; Evan Koza &mdash; built from scratch &middot;
+    <a href="mailto:evankoza@hotmail.com">evankoza@hotmail.com</a>
+  </footer>
+
+
+  <!-- TEMPORARY: live phase / speed tuner. Remove when values are locked in. -->
+  <aside id="tuner" class="collapsed">
+    <h2 id="tuner-toggle"><span class="caret">▸</span> Tuner (temp)</h2>
+    <div class="tuner-body">
+    <div id="tuner-rows"></div>
+    <div class="divider"></div>
+    <div class="row">
+      <span class="lbl">spd</span>
+      <input type="range" id="speed" min="0.002" max="0.08" step="0.002" />
+      <span class="val" id="speed-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">spin</span>
+      <input type="range" id="spin" min="0.1" max="2" step="0.1" />
+      <span class="val" id="spin-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">thk</span>
+      <input type="range" id="thick" min="0.5" max="80" step="0.5" />
+      <span class="val" id="thick-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">thk·rsp</span>
+      <input type="range" id="thresp" min="0" max="3" step="0.05" />
+      <span class="val" id="thresp-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">pix</span>
+      <input type="range" id="pixel" min="1" max="24" step="1" />
+      <span class="val" id="pixel-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">e·scl</span>
+      <input type="range" id="escl" min="0.3" max="3" step="0.05" />
+      <span class="val" id="escl-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">e·y</span>
+      <input type="range" id="ey" min="-400" max="400" step="2" />
+      <span class="val" id="ey-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">bnr</span>
+      <input type="range" id="bsize" min="1" max="6" step="0.1" />
+      <span class="val" id="bsize-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">b·scl</span>
+      <input type="range" id="bscl" min="0.2" max="4" step="0.05" />
+      <span class="val" id="bscl-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">b·y</span>
+      <input type="range" id="by" min="-400" max="400" step="2" />
+      <span class="val" id="by-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">pxmin</span>
+      <input type="range" id="bpmin" min="1" max="24" step="1" />
+      <span class="val" id="bpmin-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">pxmax</span>
+      <input type="range" id="bpix" min="1" max="48" step="1" />
+      <span class="val" id="bpix-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">bsp</span>
+      <input type="range" id="bpulse" min="0.1" max="3" step="0.1" />
+      <span class="val" id="bpulse-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">gfrq</span>
+      <input type="range" id="gfreq" min="0" max="24" step="0.5" />
+      <span class="val" id="gfreq-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">gint</span>
+      <input type="range" id="gint" min="0" max="60" step="1" />
+      <span class="val" id="gint-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">wob</span>
+      <input type="range" id="wob" min="0" max="0.3" step="0.01" />
+      <span class="val" id="wob-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">wsp</span>
+      <input type="range" id="wsp" min="0.1" max="4" step="0.1" />
+      <span class="val" id="wsp-val"></span>
+    </div>
+    <div class="divider"></div>
+    <div class="row">
+      <span class="lbl">p·chr</span>
+      <input type="range" id="pchr" min="4" max="20" step="0.5" />
+      <span class="val" id="pchr-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">c·beg</span>
+      <input type="range" id="pcbeg" min="14" max="100" step="0.5" />
+      <span class="val" id="pcbeg-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">c·spd</span>
+      <input type="range" id="pcspd" min="1" max="120" step="1" />
+      <span class="val" id="pcspd-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">p·spin</span>
+      <input type="range" id="pspin" min="40" max="1200" step="10" />
+      <span class="val" id="pspin-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">p·cut</span>
+      <input type="range" id="pcut" min="60" max="255" step="1" />
+      <span class="val" id="pcut-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">p·gam</span>
+      <input type="range" id="pgam" min="0.4" max="2.5" step="0.05" />
+      <span class="val" id="pgam-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">scn·lo</span>
+      <input type="range" id="psmin" min="0" max="10" step="1" />
+      <span class="val" id="psmin-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">scn·hi</span>
+      <input type="range" id="psmax" min="0" max="10" step="1" />
+      <span class="val" id="psmax-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">p·crop</span>
+      <input type="range" id="pcrop" min="0.3" max="1" step="0.02" />
+      <span class="val" id="pcrop-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">p·size</span>
+      <input type="range" id="psize" min="300" max="2600" step="10" />
+      <span class="val" id="psize-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">p·eye</span>
+      <input type="range" id="peye" min="-200" max="300" step="2" />
+      <span class="val" id="peye-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">p·frm</span>
+      <input type="range" id="pfrm" min="0" max="7" step="1" />
+      <span class="val" id="pfrm-val"></span>
+    </div>
+    <div class="row">
+      <span class="lbl">p·oy</span>
+      <input type="range" id="poy" min="-0.2" max="0.2" step="0.005" />
+      <span class="val" id="poy-val"></span>
+    </div>
+    <div class="hint">Colour rows = letter phase. spd/thk/pix = curve speed/thickness/pixelation; thk·rsp = how strongly thickness tracks page size (0 = constant, 1 = scales with size, >1 = exaggerated). e·scl/e·y = EVAN group scale / vertical offset. spin = spin length per load/hover. bnr = banner height (× EVAN height), b·scl/b·y = uniform banner scale / vertical offset. pxmin/pxmax = banner pixelation range, bsp = pulse speed. gfrq/gint = CRT glitch ripple count / intensity. wob/wsp = EVAN curve wobble amount / speed. p·chr = portrait char size (intro END / sweet spot), c·beg/c·spd = intro start glyph size / lowering rate (glyph-px per sec; replays on change), p·spin = ms per spin frame, p·cut = brightness cutoff (above = blank cream), p·gam = contrast gamma, scn·lo/scn·hi = gray scanline spacing range, re-rolled randomly each frame switch (0 = off), p·crop = frame kept (full → centre 50%), p·size = portrait square px, p·eye = vertical nudge so KOZA lands on the eyes.</div>
+    </div>
+  </aside>
+
+  <script>
+  (() => {
+    // ----- per-letter Lissajous parameters --------------------------------
+    // x(t) = cx + A·sin(a·t + δ)
+    // y(t) = cy + B·sin(b·t)
+    // δ (phase) is what animates: it settles to `delta` on load,
+    // is pushed on hover, and springs back on release.
+    const LETTERS = [
+      { letter: "E", a: 4, b: 1, delta: 0.55, color: "#C95000" }, // pumpkin
+      { letter: "V", a: 3, b: 6, delta: 0.73, color: "#C95000" }, // pumpkin
+      { letter: "A", a: 4, b: 6, delta: 0.82, color: "#C95000" }, // pumpkin
+      { letter: "N", a: 1, b: 3, delta: 0.31, color: "#C95000", mx: -1 }, // pumpkin (mirrored)
+    ];
+
+    // δ values are expressed as fractions — scale into radians.
+    const PHASE_SCALE = Math.PI;     // so 0.5 -> half-turn of phase
+    const SAMPLES     = 700;         // points sampled along each curve (700 is visually identical to 1400 at this stroke width, ~half the path cost)
+    let   STROKE      = 24.5;        // line width in CSS px AT the reference cell width (tunable live)
+    // responsive thickness: the stroke set above is the thickness when a cell is
+    // STROKE_REF_W wide. STROKE_RESP controls how strongly the line tracks the
+    // actual cell size — 0 = constant width at every page size, 1 = scales
+    // linearly with the cell, >1 = exaggerated (shrinks/grows faster than size).
+    let   STROKE_RESP   = 0.5;       // size-responsiveness (tunable live)
+    const STROKE_REF_W  = 275;       // cell width (CSS px) at which STROKE applies as-is
+    let   PIXEL       = 12;          // pixelation block size in CSS px, 1 = off (tunable live)
+    let   EVAN_SCALE  = 0.65;        // uniform scale on the EVAN curve group (CSS transform)
+    let   EVAN_Y      = -222;        // vertical offset of the EVAN curve group (CSS px)
+    const PAD         = 0.16;        // fraction padding inside each cell
+
+    // KOZA banner: height is locked to a multiple of the EVAN letter height
+    let   BANNER_MULT = 1.6;         // banner height = BANNER_MULT × EVAN cell height
+    let   BANNER_SCALE = 0.75;       // extra uniform scale on the whole banner (CSS transform)
+    let   BANNER_Y = -222;           // vertical offset of the whole banner (CSS px)
+    // KOZA banner: pixelation pulses between MIN and MAX block sizes
+    let   BANNER_PIXEL_MIN = 11;     // sharpest the banner gets at the pulse trough
+    let   BANNER_PIXEL_MAX = 12;     // chunkiest the banner gets at the pulse peak
+    let   BANNER_PULSE_SPD = 0.3;    // pulse angular speed (rad/s); period = 2π / spd
+
+    // CRT-style glitch: horizontal strips displaced by a sine wave scrolling down
+    let   GLITCH_RIPPLES = 2.5;      // number of sine ripples down the banner height
+    let   GLITCH_AMP     = 2;        // intensity: max horizontal shift (backing px)
+    const GLITCH_SPD     = 2.0;      // downward scroll speed of the ripple (rad/s)
+    const GLITCH_STRIP   = 3;        // strip height in backing px (smaller = smoother)
+
+    // EVAN curve wobble: a gentle sine oscillation layered onto each letter's
+    // resting phase so the curves softly undulate (scaled by `a` to read uniform)
+    let   WOBBLE_AMP = 0.01;         // wobble amplitude in phase radians (× letter's a)
+    let   WOBBLE_SPD = 4.0;          // wobble angular speed (rad/s)
+
+    // single easing rate for the phase settle / hover — identical for every
+    // letter so they all advance their phase at the same visual rate (no
+    // overshoot, so high-frequency curves don't appear to "spin" faster).
+    let EASE = 0.002;   // tunable live via the temp panel
+    const SETTLE_BASE = 0.018;  // constant closing speed (rad/frame) so the tail finishes
+    let SPIN_TURNS = 0.5;   // how much of a full perceived rotation each load-in / hover spin travels
+    // a spin must displace the phase by a WHOLE multiple of 2π, otherwise the
+    // figure ends on a different point of sin(a·t + phase) than it started and
+    // visibly snaps. 2π·a·SPIN_TURNS is only a multiple of 2π when a·SPIN_TURNS
+    // is an integer (true for even-a E/A at .5, but not odd-a V or a=1 N — those
+    // jumped to the half-flipped figure on hover). Round to whole turns (min 1)
+    // so every letter spins cleanly from rest back to rest.
+    const spinTurns = (a) => Math.max(1, Math.round(a * SPIN_TURNS));
+
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+    const cells = Array.from(document.querySelectorAll(".cell"));
+    const curvesEl = document.getElementById("curves");
+    curvesEl.style.setProperty("--escale", EVAN_SCALE);
+    curvesEl.style.setProperty("--ey", EVAN_Y + "px");
+
+    const state = cells.map((cell, i) => {
+      const cfg = LETTERS[i];
+      const canvas = document.createElement("canvas");
+      cell.appendChild(canvas);
+      const ctx = canvas.getContext("2d");
+
+      // offscreen buffers for the pixelation pass: draw crisp into `src`,
+      // downsample into `low`, then upscale `low` onto the visible canvas.
+      const src = document.createElement("canvas");
+      const srcCtx = src.getContext("2d");
+      const low = document.createElement("canvas");
+      const lowCtx = low.getContext("2d");
+
+      const goal = cfg.delta * PHASE_SCALE;       // resting phase target
+      return {
+        cell, canvas, ctx, cfg,
+        src, srcCtx, low, lowCtx,
+        goal,
+        // start one perceived rotation away so it visibly "phases in" on load.
+        // scale by `a`: phase couples with `a` inside sin(a·t + δ), so a full
+        // perceived rotation needs 2π·a of phase, not a flat 2π.
+        phase: goal - 2 * Math.PI * spinTurns(cfg.a),
+        wobOff: i * 1.7,   // phase offset so letters wobble out of sync
+        w: 0, h: 0,
+      };
+    });
+
+    function resize() {
+      for (const s of state) {
+        // offsetWidth/Height = layout size, unaffected by the .curves transform,
+        // so the EVAN scale (e·scl) never feeds back into the render resolution
+        // or the banner height lock below
+        s.w = s.cell.offsetWidth;
+        s.h = s.cell.offsetHeight;
+        s.canvas.width = Math.round(s.w * dpr);
+        s.canvas.height = Math.round(s.h * dpr);
+        s.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        s.src.width = s.canvas.width;
+        s.src.height = s.canvas.height;
+      }
+      // lock the KOZA banner height to a multiple of the EVAN letter height
+      // (width follows the canvas's intrinsic 1739:605 ratio automatically)
+      if (state[0].h) bannerCanvas.style.height = (BANNER_MULT * state[0].h) + "px";
+      bannerCanvas.style.setProperty("--bscale", BANNER_SCALE);
+      bannerCanvas.style.setProperty("--by", BANNER_Y + "px");
+    }
+    window.addEventListener("resize", resize);
+
+    cells.forEach((cell, i) => {
+      // a hover triggers a one-shot full spin: charge a whole perceived rotation
+      // (2π·a) onto the phase so it spins all the way back to rest, regardless
+      // of how briefly the pointer is over the cell.
+      cell.addEventListener("pointerenter", () => {
+        state[i].phase -= 2 * Math.PI * spinTurns(state[i].cfg.a);
+      });
+    });
+
+    // ----- KOZA banner: pulsing pixelation + CRT sine-ripple glitch ------
+    const bannerCanvas = document.getElementById("banner");
+    const bannerCtx = bannerCanvas.getContext("2d");
+    let bannerW = bannerCanvas.width, bannerH = bannerCanvas.height;
+    const bannerLow = document.createElement("canvas");        // downsample buffer
+    const bannerLowCtx = bannerLow.getContext("2d");
+    const bannerSrc = document.createElement("canvas");        // pixelated, pre-glitch
+    bannerSrc.width = bannerW; bannerSrc.height = bannerH;
+    const bannerSrcCtx = bannerSrc.getContext("2d");
+    const bannerImg = new Image();
+    let bannerReady = false;
+    bannerImg.onload = () => {
+      // adopt the image's real pixel dimensions so any aspect ratio renders
+      // 1:1 (no horizontal squish) and the canvas intrinsic ratio is correct
+      bannerW = bannerImg.naturalWidth;
+      bannerH = bannerImg.naturalHeight;
+      bannerCanvas.width = bannerW;   bannerCanvas.height = bannerH;
+      bannerSrc.width = bannerW;      bannerSrc.height = bannerH;
+      bannerReady = true;
+      resize();   // re-apply the height lock with the new intrinsic ratio
+      const n = performance.now();
+      drawBanner(bannerPixelAt(n), n);
+    };
+    bannerImg.src = "../assets/koza.png";
+
+    // pixel >= 1 (1 = sharp, larger = chunkier blocks); ms drives the glitch scroll
+    function drawBanner(pixel, ms) {
+      if (!bannerReady) return;
+
+      // 1. pixelate the image into the source buffer
+      bannerSrcCtx.setTransform(1, 0, 0, 1, 0, 0);
+      bannerSrcCtx.clearRect(0, 0, bannerW, bannerH);
+      if (pixel <= 1.05) {
+        bannerSrcCtx.imageSmoothingEnabled = true;
+        bannerSrcCtx.drawImage(bannerImg, 0, 0, bannerW, bannerH);
+      } else {
+        const lowW = Math.max(1, Math.round(bannerW / pixel));
+        const lowH = Math.max(1, Math.round(bannerH / pixel));
+        bannerLow.width = lowW;
+        bannerLow.height = lowH;
+        bannerLowCtx.imageSmoothingEnabled = true;
+        bannerLowCtx.clearRect(0, 0, lowW, lowH);
+        bannerLowCtx.drawImage(bannerImg, 0, 0, lowW, lowH);
+        bannerSrcCtx.imageSmoothingEnabled = false;
+        bannerSrcCtx.drawImage(bannerLow, 0, 0, lowW, lowH, 0, 0, bannerW, bannerH);
+      }
+
+      // 2. present with a CRT glitch: shift horizontal strips by a sine wave
+      //    that scrolls downward over time
+      bannerCtx.setTransform(1, 0, 0, 1, 0, 0);
+      bannerCtx.clearRect(0, 0, bannerW, bannerH);
+      bannerCtx.imageSmoothingEnabled = false;
+      if (GLITCH_AMP <= 0.5) {
+        bannerCtx.drawImage(bannerSrc, 0, 0);
+      } else {
+        const t = (ms / 1000) * GLITCH_SPD;
+        const k = GLITCH_RIPPLES * Math.PI * 2;
+        for (let y = 0; y < bannerH; y += GLITCH_STRIP) {
+          const sh = Math.min(GLITCH_STRIP, bannerH - y);
+          const off = GLITCH_AMP * Math.sin((y / bannerH) * k - t);
+          bannerCtx.drawImage(bannerSrc, 0, y, bannerW, sh, off, y, bannerW, sh);
+        }
+      }
+    }
+
+    // current pulse pixel level from a clock (eased MIN <-> MAX)
+    function bannerPixelAt(ms) {
+      const f = 0.5 - 0.5 * Math.cos((ms / 1000) * BANNER_PULSE_SPD);
+      return BANNER_PIXEL_MIN + (BANNER_PIXEL_MAX - BANNER_PIXEL_MIN) * f;
+    }
+
+    // ----- rotating ASCII portrait (deepest layer) ----------------------
+    // Eight head-spin frames, cycled in rotational order so the head appears
+    // to spin. Each frame is centre-cropped to the middle 50% and re-rendered
+    // as a monospace character mosaic — cursor.com/compile-style — in pumpkin
+    // orange on the cream page, with periodic gray "compile" scanlines.
+    // each frame: { f: file, oy: vertical crop offset as a fraction of source
+    // height }. oy nudges the centred crop down the photo (positive) so a head
+    // that sits low in the source rises into the same place as the other frames.
+    // Three frames were shot ~10% lower than the rest — give them a positive oy.
+    const PORTRAIT_FILES = [
+      { f: "img0.jpeg", oy: -0.005 },  // right profile — spin starts here
+      { f: "img1.jpeg", oy: 0 },       // 3/4 (nose right)
+      { f: "img2.jpeg", oy: 0 },       // front
+      { f: "img3.jpeg", oy: 0.03 },    // 3/4 (nose left)
+      { f: "img4.jpeg", oy: 0.025 },   // left profile
+      { f: "img5.jpeg", oy: 0.02 },    // back, left side
+      { f: "img6.jpeg", oy: 0 },       // back
+      { f: "img7.jpeg", oy: 0 },       // back, right side
+    ];
+    // light -> dark ramp (index 0 = brightest), code-ish so it reads like the
+    // compiling text mosaic on the reference.
+    const PORTRAIT_RAMP =
+      " .'\",:;!i+trxnvczXYUJCLQ0OZmwqpdbkhao#MW&8%B@$";
+    const PORTRAIT_COLOR      = "#F2622E";                 // pumpkin glyphs
+    const PORTRAIT_SCAN_COLOR = "rgba(120,131,143,0.9)";  // gray scanline rows
+    let P_CROP  = 0.62;  // fraction of the frame kept (1 = full photo, 0.5 = centre 50%)
+    const P_CROP_R = 0.05; // additionally drop this fraction of width off the RIGHT side
+    const P_CROP_L = 0.02; // ...and this fraction off the LEFT side (nudges the face left)
+
+    let P_CHAR  = 15;    // glyph height in CSS px (advance = 0.6×) — the END / sweet-spot size
+    // intro: on load the glyph size starts chunky (P_CHAR_START) and lowers at
+    // P_CHAR_SPEED glyph-px per second until it reaches P_CHAR, then settles.
+    let P_CHAR_START = 65;   // intro starting glyph height (bigger = coarser mosaic)
+    let P_CHAR_SPEED = 40;   // intro lowering rate in glyph-px per second
+    let pCharEff   = (P_CHAR_START > P_CHAR) ? P_CHAR_START : null; // animated size while intro runs; null once settled
+    let pCharIntroT0 = 0;    // intro clock start (0 = not yet started; set on first ready frame)
+    let P_SPIN  = 700;   // ms each spin frame is held
+    let P_CUT   = 154;   // luminance >= cut -> blank (cream shows through)
+    let P_GAMMA = 1.0;   // contrast gamma on mapped darkness
+    // scanline spacing (every Nth row drawn gray, 0 = off) is re-rolled to a
+    // random value in [P_SCAN_MIN, P_SCAN_MAX] each time the spin frame switches
+    let P_SCAN_MIN = 3;  // densest scanlines (smallest spacing)
+    let P_SCAN_MAX = 8;  // sparsest scanlines (largest spacing)
+    let P_SCAN  = 4;     // current spacing in use (re-rolled per frame switch)
+    let P_SIZE  = 1500;  // portrait square size in CSS px
+    let P_EYE   = -102;  // downward nudge so KOZA lands over the eyes
+
+    const portraitCanvas = document.getElementById("portrait");
+    const portraitCtx = portraitCanvas.getContext("2d");
+    const pSample = document.createElement("canvas");      // per-cell sampler
+    const pSampleCtx = pSample.getContext("2d", { willReadFrequently: true });
+
+    const PORTRAIT_DIR = "../assets/portrait/";   // live 512px frames (1600px masters in assets/portrait-src/)
+    const portraitImgs = PORTRAIT_FILES.map((p) => {
+      const im = new Image();
+      im.src = encodeURI(PORTRAIT_DIR + p.f);
+      return im;
+    });
+    let pIdx = 0, pLastSwitch = 0, pSpinning = true;
+
+    // roll a fresh scanline spacing within the min/max range (inclusive)
+    const pickScan = () => {
+      const lo = Math.min(P_SCAN_MIN, P_SCAN_MAX);
+      const hi = Math.max(P_SCAN_MIN, P_SCAN_MAX);
+      P_SCAN = lo + Math.floor(Math.random() * (hi - lo + 1));
+    };
+    pickScan();
+
+    function layoutPortrait() {
+      portraitCanvas.style.width = P_SIZE + "px";
+      portraitCanvas.style.height = P_SIZE + "px";
+      portraitCanvas.style.setProperty("--peye", P_EYE + "px");
+      portraitCanvas.width = Math.round(P_SIZE * dpr);
+      portraitCanvas.height = Math.round(P_SIZE * dpr);
+    }
+
+    function renderPortrait() {
+      const img = portraitImgs[pIdx];
+      if (!img || !img.complete || !img.naturalWidth) return;
+
+      const charH = (pCharEff != null) ? pCharEff : P_CHAR, charW = charH * 0.6;
+      const cols = Math.max(1, Math.floor(P_SIZE / charW));
+      const rows = Math.max(1, Math.floor(P_SIZE / charH));
+
+      // sample the centre-50% crop down to one pixel per character cell
+      pSample.width = cols; pSample.height = rows;
+      pSampleCtx.imageSmoothingEnabled = true;
+      pSampleCtx.clearRect(0, 0, cols, rows);
+      const sw = img.naturalWidth * P_CROP;
+      const sh = img.naturalHeight * P_CROP;
+      // centred crop, then panned so the rightmost P_CROP_R (wall-shadow) and
+      // leftmost P_CROP_L of the photo are dropped; net effect recentres the face
+      const sx = (img.naturalWidth - sw) / 2
+        - img.naturalWidth * P_CROP_R + img.naturalWidth * P_CROP_L;
+      // centred crop plus a per-frame vertical nudge so low-shot frames align
+      const sy = (img.naturalHeight - sh) / 2
+        + img.naturalHeight * (PORTRAIT_FILES[pIdx].oy || 0);
+      pSampleCtx.drawImage(img, sx, sy, sw, sh, 0, 0, cols, rows);
+      const data = pSampleCtx.getImageData(0, 0, cols, rows).data;
+
+      const ctx = portraitCtx;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, P_SIZE, P_SIZE);
+      ctx.font = charH + "px ui-monospace, Menlo, Consolas, 'Courier New', monospace";
+      ctx.textBaseline = "top";
+
+      const N = PORTRAIT_RAMP.length;
+      for (let r = 0; r < rows; r++) {
+        ctx.fillStyle = (P_SCAN > 0 && r % P_SCAN === 0)
+          ? PORTRAIT_SCAN_COLOR : PORTRAIT_COLOR;
+        const y = r * charH;
+        for (let c = 0; c < cols; c++) {
+          const i = (r * cols + c) * 4;
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          if (lum >= P_CUT) continue;                 // brighter than cut -> cream
+          const t = Math.pow((P_CUT - lum) / P_CUT, P_GAMMA);
+          const ch = PORTRAIT_RAMP[Math.min(N - 1, Math.floor(t * N))];
+          if (ch === " ") continue;
+          ctx.fillText(ch, c * charW, y);
+        }
+      }
+    }
+
+    layoutPortrait();
+    portraitImgs.forEach((im) => {
+      if (im.complete) renderPortrait();
+      else im.addEventListener("load", () => renderPortrait(), { once: true });
+    });
+
+    function drawCurve(s, phaseOverride) {
+      const { srcCtx, cfg, w, h } = s;
+
+      // 1. render the crisp curve into the source buffer (full device res)
+      srcCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      srcCtx.clearRect(0, 0, w, h);
+
+      const cx = w / 2, cy = h / 2;
+      const A = (w / 2) * (1 - PAD);
+      const B = (h / 2) * (1 - PAD);
+      const delta = (phaseOverride == null) ? s.phase : phaseOverride;
+
+      srcCtx.beginPath();
+      for (let i = 0; i <= SAMPLES; i++) {
+        const t = (i / SAMPLES) * Math.PI * 2;
+        const x = cx + (cfg.mx || 1) * A * Math.sin(cfg.a * t + delta);
+        const y = cy + B * Math.sin(cfg.b * t);
+        if (i === 0) srcCtx.moveTo(x, y);
+        else srcCtx.lineTo(x, y);
+      }
+      srcCtx.strokeStyle = cfg.color;
+      // blend between a constant width (RESP=0) and one proportional to cell
+      // size (RESP=1); at w === STROKE_REF_W the result is STROKE either way
+      const sizeFactor = 1 - STROKE_RESP + STROKE_RESP * (w / STROKE_REF_W);
+      srcCtx.lineWidth = Math.max(0.5, STROKE * sizeFactor);
+      srcCtx.lineJoin = "round";
+      srcCtx.lineCap = "round";
+      srcCtx.stroke();
+
+      // 2. present onto the visible canvas, pixelating when PIXEL > 1
+      const vctx = s.ctx;
+      const W = s.canvas.width, H = s.canvas.height;
+      vctx.setTransform(1, 0, 0, 1, 0, 0);
+      vctx.clearRect(0, 0, W, H);
+
+      if (PIXEL <= 1) {
+        vctx.imageSmoothingEnabled = true;
+        vctx.drawImage(s.src, 0, 0);
+      } else {
+        const lowW = Math.max(1, Math.round(w / PIXEL));
+        const lowH = Math.max(1, Math.round(h / PIXEL));
+        s.low.width = lowW;
+        s.low.height = lowH;
+        // average down for clean blocks, then blow back up with no smoothing
+        s.lowCtx.imageSmoothingEnabled = true;
+        s.lowCtx.clearRect(0, 0, lowW, lowH);
+        s.lowCtx.drawImage(s.src, 0, 0, W, H, 0, 0, lowW, lowH);
+        vctx.imageSmoothingEnabled = false;
+        vctx.drawImage(s.low, 0, 0, lowW, lowH, 0, 0, W, H);
+      }
+    }
+
+    // The hero loop is the heaviest continuous work on the page (curve strokes +
+    // the banner's ~200 strip-blits per frame). Run it ONLY while the hero is on
+    // screen and the tab is active — otherwise it renders to nobody.
+    let running = false;        // is a rAF for step() currently scheduled?
+    let heroOnScreen = true;    // is the intro/hero section intersecting the viewport?
+    function startStep() { if (!running) { running = true; requestAnimationFrame(step); } }
+    function stopStep()  { running = false; }   // step() bails on its own `if (running)` guard
+    function step(ms) {
+      const now = ms || performance.now();
+      const wt = (now / 1000) * WOBBLE_SPD;
+      for (const s of state) {
+        // ease toward the resting phase, plus a small constant closing speed so
+        // the tail finishes promptly instead of asymptoting forever
+        const rem = s.goal - s.phase;
+        // scale the constant closing speed by the letter's whole-turn spin count:
+        // spin distance is 2π·spinTurns(a), so the rate must scale by the same
+        // count or letters with fewer turns (N) finish their settle far sooner
+        // than ones with more (E)
+        let d = rem * EASE + Math.sign(rem) * SETTLE_BASE * spinTurns(s.cfg.a);
+        if (Math.abs(d) > Math.abs(rem)) d = rem;   // don't overshoot
+        s.phase += d;
+        // gentle wobble layered directly on the rendered phase (scaled by `a`)
+        const wob = WOBBLE_AMP * s.cfg.a * Math.sin(wt + s.wobOff);
+        drawCurve(s, s.phase + wob);
+      }
+      drawBanner(bannerPixelAt(now), now);
+      // intro: lower the glyph size from P_CHAR_START down to P_CHAR. The clock
+      // only starts once the current frame's image is actually ready, so the
+      // chunky first frame isn't skipped while images are still loading.
+      if (pCharEff != null) {
+        const img = portraitImgs[pIdx];
+        if (img && img.complete && img.naturalWidth) {
+          if (pCharIntroT0 === 0) pCharIntroT0 = now;
+          const v = P_CHAR_START - P_CHAR_SPEED * ((now - pCharIntroT0) / 1000);
+          if (v <= P_CHAR) pCharEff = null;   // reached the sweet spot — settle
+          else pCharEff = v;
+          renderPortrait();
+        }
+      }
+      // advance the head-spin: hold each frame P_SPIN ms, then redraw. Don't run
+      // the clock until the first frame (index 0) is actually loaded and painted,
+      // otherwise slow image loads let the spin advance past index 0 before
+      // anything is visible — the spin would appear to "start" mid-sequence.
+      const cur = portraitImgs[pIdx];
+      if (cur && cur.complete && cur.naturalWidth) {
+        if (pLastSwitch === 0) {
+          pLastSwitch = now;        // start the hold timer on the first ready frame
+        } else if (pSpinning && now - pLastSwitch >= P_SPIN) {
+          pLastSwitch = now;
+          pIdx = (pIdx + 1) % portraitImgs.length;
+          pickScan();               // new scanline spacing for the new frame
+          renderPortrait();
+        }
+      }
+      if (running) requestAnimationFrame(step);
+    }
+
+    // pause the hero whenever it scrolls out of view (mirrors the projects
+    // field) AND whenever the tab is hidden — start only when both are true.
+    // This also stops the banner's per-frame glitch blits once it's off screen.
+    const heroEl = document.querySelector(".intro");
+    const heroIO = new IntersectionObserver((entries) => {
+      heroOnScreen = entries[0].isIntersecting;
+      if (heroOnScreen && !document.hidden) startStep(); else stopStep();
+    }, { threshold: 0 });
+    if (heroEl) heroIO.observe(heroEl);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopStep();
+      else if (heroOnScreen) startStep();
+    });
+
+    // dev hook: freeze the loop on the resting state for still captures
+    window.__freeze = () => {
+      running = false;
+      pSpinning = false;
+      for (const s of state) {
+        s.phase = s.goal;
+        drawCurve(s);
+      }
+      const now = performance.now();
+      drawBanner(bannerPixelAt(now), now);
+      renderPortrait();
+    };
+    window.__unfreeze = () => {
+      pSpinning = true;
+      pLastSwitch = performance.now();
+      if (!running) { running = true; requestAnimationFrame(step); }
+    };
+    // dev hook: jump the portrait to a specific spin frame (for still captures)
+    window.__portrait = (i) => { pIdx = ((i | 0) % portraitImgs.length + portraitImgs.length) % portraitImgs.length; pickScan(); renderPortrait(); };
+    // dev hook: render the banner at a specific pixel level (for still captures)
+    window.__banner = (p, ms) => drawBanner(p, ms == null ? performance.now() : ms);
+
+    // ----- TEMPORARY tuner wiring ----------------------------------------
+    // collapse/expand the panel (starts collapsed via the `collapsed` class)
+    document.getElementById("tuner-toggle").addEventListener("click", () => {
+      document.getElementById("tuner").classList.toggle("collapsed");
+    });
+
+    const rowsEl = document.getElementById("tuner-rows");
+    state.forEach((s) => {
+      const row = document.createElement("div");
+      row.className = "row";
+
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.background = s.cfg.color;
+
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = "0"; slider.max = "2"; slider.step = "0.01";
+      slider.value = String(s.cfg.delta);
+
+      const val = document.createElement("span");
+      val.className = "val";
+      val.textContent = s.cfg.delta.toFixed(2);
+
+      slider.addEventListener("input", () => {
+        const v = parseFloat(slider.value);
+        s.cfg.delta = v;
+        s.goal = v * PHASE_SCALE;
+        // snap phase to the goal while dragging for instant visual feedback
+        s.phase = s.goal;
+        val.textContent = v.toFixed(2);
+        if (!running) drawCurve(s);
+      });
+
+      row.append(dot, slider, val);
+      rowsEl.appendChild(row);
+    });
+
+    const redrawAllIfFrozen = () => { if (!running) for (const s of state) drawCurve(s); };
+
+    const speed = document.getElementById("speed");
+    const speedVal = document.getElementById("speed-val");
+    speed.value = String(EASE);
+    speedVal.textContent = EASE.toFixed(3);
+    speed.addEventListener("input", () => {
+      EASE = parseFloat(speed.value);
+      speedVal.textContent = EASE.toFixed(3);
+    });
+
+    const spin = document.getElementById("spin");
+    const spinVal = document.getElementById("spin-val");
+    spin.value = String(SPIN_TURNS);
+    spinVal.textContent = SPIN_TURNS.toFixed(1);
+    spin.addEventListener("input", () => {
+      SPIN_TURNS = parseFloat(spin.value);
+      spinVal.textContent = SPIN_TURNS.toFixed(1);
+    });
+
+    const thick = document.getElementById("thick");
+    const thickVal = document.getElementById("thick-val");
+    thick.value = String(STROKE);
+    thickVal.textContent = STROKE.toFixed(1);
+    thick.addEventListener("input", () => {
+      STROKE = parseFloat(thick.value);
+      thickVal.textContent = STROKE.toFixed(1);
+      redrawAllIfFrozen();
+    });
+
+    const thresp = document.getElementById("thresp");
+    const threspVal = document.getElementById("thresp-val");
+    thresp.value = String(STROKE_RESP);
+    threspVal.textContent = STROKE_RESP.toFixed(2) + "×";
+    thresp.addEventListener("input", () => {
+      STROKE_RESP = parseFloat(thresp.value);
+      threspVal.textContent = STROKE_RESP.toFixed(2) + "×";
+      redrawAllIfFrozen();
+    });
+
+    const pixel = document.getElementById("pixel");
+    const pixelVal = document.getElementById("pixel-val");
+    pixel.value = String(PIXEL);
+    pixelVal.textContent = PIXEL === 1 ? "off" : String(PIXEL);
+    pixel.addEventListener("input", () => {
+      PIXEL = parseInt(pixel.value, 10);
+      pixelVal.textContent = PIXEL === 1 ? "off" : String(PIXEL);
+      redrawAllIfFrozen();
+    });
+
+    const escl = document.getElementById("escl");
+    const esclVal = document.getElementById("escl-val");
+    escl.value = String(EVAN_SCALE);
+    esclVal.textContent = EVAN_SCALE.toFixed(2) + "×";
+    escl.addEventListener("input", () => {
+      EVAN_SCALE = parseFloat(escl.value);
+      esclVal.textContent = EVAN_SCALE.toFixed(2) + "×";
+      curvesEl.style.setProperty("--escale", EVAN_SCALE);
+    });
+
+    const ey = document.getElementById("ey");
+    const eyVal = document.getElementById("ey-val");
+    ey.value = String(EVAN_Y);
+    eyVal.textContent = EVAN_Y + "px";
+    ey.addEventListener("input", () => {
+      EVAN_Y = parseFloat(ey.value);
+      eyVal.textContent = EVAN_Y + "px";
+      curvesEl.style.setProperty("--ey", EVAN_Y + "px");
+    });
+
+    const bsize = document.getElementById("bsize");
+    const bsizeVal = document.getElementById("bsize-val");
+    bsize.value = String(BANNER_MULT);
+    bsizeVal.textContent = BANNER_MULT.toFixed(1) + "×";
+    bsize.addEventListener("input", () => {
+      BANNER_MULT = parseFloat(bsize.value);
+      bsizeVal.textContent = BANNER_MULT.toFixed(1) + "×";
+      resize();
+    });
+
+    const bscl = document.getElementById("bscl");
+    const bsclVal = document.getElementById("bscl-val");
+    bscl.value = String(BANNER_SCALE);
+    bsclVal.textContent = BANNER_SCALE.toFixed(2) + "×";
+    bscl.addEventListener("input", () => {
+      BANNER_SCALE = parseFloat(bscl.value);
+      bsclVal.textContent = BANNER_SCALE.toFixed(2) + "×";
+      bannerCanvas.style.setProperty("--bscale", BANNER_SCALE);
+    });
+
+    const by = document.getElementById("by");
+    const byVal = document.getElementById("by-val");
+    by.value = String(BANNER_Y);
+    byVal.textContent = BANNER_Y + "px";
+    by.addEventListener("input", () => {
+      BANNER_Y = parseFloat(by.value);
+      byVal.textContent = BANNER_Y + "px";
+      bannerCanvas.style.setProperty("--by", BANNER_Y + "px");
+    });
+
+    const redrawBannerIfFrozen = () => { if (!running) { const n = performance.now(); drawBanner(bannerPixelAt(n), n); } };
+
+    const bpmin = document.getElementById("bpmin");
+    const bpminVal = document.getElementById("bpmin-val");
+    bpmin.value = String(BANNER_PIXEL_MIN);
+    bpminVal.textContent = String(BANNER_PIXEL_MIN);
+    bpmin.addEventListener("input", () => {
+      BANNER_PIXEL_MIN = parseInt(bpmin.value, 10);
+      bpminVal.textContent = String(BANNER_PIXEL_MIN);
+      redrawBannerIfFrozen();
+    });
+
+    const bpix = document.getElementById("bpix");
+    const bpixVal = document.getElementById("bpix-val");
+    bpix.value = String(BANNER_PIXEL_MAX);
+    bpixVal.textContent = String(BANNER_PIXEL_MAX);
+    bpix.addEventListener("input", () => {
+      BANNER_PIXEL_MAX = parseInt(bpix.value, 10);
+      bpixVal.textContent = String(BANNER_PIXEL_MAX);
+      redrawBannerIfFrozen();
+    });
+
+    const bpulse = document.getElementById("bpulse");
+    const bpulseVal = document.getElementById("bpulse-val");
+    bpulse.value = String(BANNER_PULSE_SPD);
+    bpulseVal.textContent = BANNER_PULSE_SPD.toFixed(1);
+    bpulse.addEventListener("input", () => {
+      BANNER_PULSE_SPD = parseFloat(bpulse.value);
+      bpulseVal.textContent = BANNER_PULSE_SPD.toFixed(1);
+    });
+
+    const gfreq = document.getElementById("gfreq");
+    const gfreqVal = document.getElementById("gfreq-val");
+    gfreq.value = String(GLITCH_RIPPLES);
+    gfreqVal.textContent = GLITCH_RIPPLES.toFixed(1);
+    gfreq.addEventListener("input", () => {
+      GLITCH_RIPPLES = parseFloat(gfreq.value);
+      gfreqVal.textContent = GLITCH_RIPPLES.toFixed(1);
+      redrawBannerIfFrozen();
+    });
+
+    const gint = document.getElementById("gint");
+    const gintVal = document.getElementById("gint-val");
+    gint.value = String(GLITCH_AMP);
+    gintVal.textContent = String(GLITCH_AMP);
+    gint.addEventListener("input", () => {
+      GLITCH_AMP = parseFloat(gint.value);
+      gintVal.textContent = String(GLITCH_AMP);
+      redrawBannerIfFrozen();
+    });
+
+    const wob = document.getElementById("wob");
+    const wobVal = document.getElementById("wob-val");
+    wob.value = String(WOBBLE_AMP);
+    wobVal.textContent = WOBBLE_AMP.toFixed(2);
+    wob.addEventListener("input", () => {
+      WOBBLE_AMP = parseFloat(wob.value);
+      wobVal.textContent = WOBBLE_AMP.toFixed(2);
+    });
+
+    const wsp = document.getElementById("wsp");
+    const wspVal = document.getElementById("wsp-val");
+    wsp.value = String(WOBBLE_SPD);
+    wspVal.textContent = WOBBLE_SPD.toFixed(1);
+    wsp.addEventListener("input", () => {
+      WOBBLE_SPD = parseFloat(wsp.value);
+      wspVal.textContent = WOBBLE_SPD.toFixed(1);
+    });
+
+    // ----- portrait sliders ----------------------------------------------
+    const bindPortrait = (id, get, set, fmt, relayout) => {
+      const el = document.getElementById(id);
+      const valEl = document.getElementById(id + "-val");
+      el.value = String(get());
+      valEl.textContent = fmt(get());
+      el.addEventListener("input", () => {
+        set(parseFloat(el.value));
+        valEl.textContent = fmt(get());
+        if (relayout) layoutPortrait();
+        renderPortrait();
+      });
+    };
+    bindPortrait("pchr",  () => P_CHAR,  (v) => P_CHAR  = v, (v) => v.toFixed(1));
+    bindPortrait("pspin", () => P_SPIN,  (v) => P_SPIN  = v, (v) => v + "ms");
+    bindPortrait("pcut",  () => P_CUT,   (v) => P_CUT   = v, (v) => String(v | 0));
+    bindPortrait("pgam",  () => P_GAMMA, (v) => P_GAMMA = v, (v) => v.toFixed(2));
+    // scanline min/max: editing either re-rolls a value so the change previews live
+    const psmin = document.getElementById("psmin");
+    const psminVal = document.getElementById("psmin-val");
+    const psmax = document.getElementById("psmax");
+    const psmaxVal = document.getElementById("psmax-val");
+    const fmtScan = (v) => v === 0 ? "off" : String(v | 0);
+    psmin.value = String(P_SCAN_MIN);  psminVal.textContent = fmtScan(P_SCAN_MIN);
+    psmax.value = String(P_SCAN_MAX);  psmaxVal.textContent = fmtScan(P_SCAN_MAX);
+    const onScanRange = () => {
+      P_SCAN_MIN = parseInt(psmin.value, 10);
+      P_SCAN_MAX = parseInt(psmax.value, 10);
+      psminVal.textContent = fmtScan(P_SCAN_MIN);
+      psmaxVal.textContent = fmtScan(P_SCAN_MAX);
+      pickScan();
+      renderPortrait();
+    };
+    psmin.addEventListener("input", onScanRange);
+    psmax.addEventListener("input", onScanRange);
+    bindPortrait("pcrop", () => P_CROP,  (v) => P_CROP  = v, (v) => v >= 0.999 ? "full" : v.toFixed(2));
+    bindPortrait("psize", () => P_SIZE,  (v) => P_SIZE  = v, (v) => (v | 0) + "px", true);
+    bindPortrait("peye",  () => P_EYE,   (v) => P_EYE   = v, (v) => (v | 0) + "px", true);
+
+    // intro glyph-size ramp: c·beg (start size) and c·spd (lowering rate). Tweaking
+    // either one replays the intro so you can preview it live.
+    const restartCharIntro = () => {
+      pCharEff = (P_CHAR_START > P_CHAR && P_CHAR_SPEED > 0) ? P_CHAR_START : null;
+      pCharIntroT0 = 0;
+      renderPortrait();
+    };
+    const pcbeg = document.getElementById("pcbeg");
+    const pcbegVal = document.getElementById("pcbeg-val");
+    pcbeg.value = String(P_CHAR_START);
+    pcbegVal.textContent = P_CHAR_START.toFixed(1);
+    pcbeg.addEventListener("input", () => {
+      P_CHAR_START = parseFloat(pcbeg.value);
+      pcbegVal.textContent = P_CHAR_START.toFixed(1);
+      restartCharIntro();
+    });
+    const pcspd = document.getElementById("pcspd");
+    const pcspdVal = document.getElementById("pcspd-val");
+    pcspd.value = String(P_CHAR_SPEED);
+    pcspdVal.textContent = P_CHAR_SPEED.toFixed(0) + "/s";
+    pcspd.addEventListener("input", () => {
+      P_CHAR_SPEED = parseFloat(pcspd.value);
+      pcspdVal.textContent = P_CHAR_SPEED.toFixed(0) + "/s";
+      restartCharIntro();
+    });
+
+    // per-frame vertical-offset tuning: p·frm parks the spin on one frame,
+    // p·oy edits that frame's oy. read the locked-in values off the sliders and
+    // paste them back into the PORTRAIT_FILES table above.
+    const pfrm = document.getElementById("pfrm");
+    const pfrmVal = document.getElementById("pfrm-val");
+    const poy = document.getElementById("poy");
+    const poyVal = document.getElementById("poy-val");
+    const syncPoy = () => {
+      poy.value = String(PORTRAIT_FILES[pIdx].oy || 0);
+      poyVal.textContent = (PORTRAIT_FILES[pIdx].oy || 0).toFixed(3);
+    };
+    pfrm.value = String(pIdx);
+    pfrmVal.textContent = String(pIdx);
+    syncPoy();
+    pfrm.addEventListener("input", () => {
+      pSpinning = false;                       // park so the frame holds still
+      pIdx = parseInt(pfrm.value, 10);
+      pfrmVal.textContent = String(pIdx);
+      syncPoy();
+      renderPortrait();
+    });
+    poy.addEventListener("input", () => {
+      PORTRAIT_FILES[pIdx].oy = parseFloat(poy.value);
+      poyVal.textContent = PORTRAIT_FILES[pIdx].oy.toFixed(3);
+      renderPortrait();
+    });
+
+    resize();
+    startStep();
+  })();
+  </script>
+
+  <!-- Marquee: clone the authored company set once for a seamless -50% loop -->
+  <script>
+  (() => {
+    const track = document.getElementById('marquee-track');
+    if (!track) return;
+    Array.from(track.children).forEach(item => {
+      const clone = item.cloneNode(true);
+      clone.setAttribute('aria-hidden', 'true');
+      track.appendChild(clone);
+    });
+  })();
+  </script>
+
+  <!-- ══ PROJECTS: masonry carousel, drag/scroll, modal, and the two
+       flowing monospace character fields (section + modal backdrop) ═══ -->
+  <script>
+  (() => {
+    const PUMPKIN = "#C95000";
+    const PUMPKIN_HOT = "#F2622E";
+
+    // ── 1. build the placeholder tiles ────────────────────────────────
+    // Tiles come in a varied vocabulary of shapes (no tall-skinny). They're
+    // emitted in "modules" that each fill exactly 2 columns × 3 rows with no
+    // holes — so `grid-auto-flow: column dense` reproduces identical full
+    // columns and the whole set tiles seamlessly when cloned for the loop.
+    //   q = 2×2 square · l = 2×1 landscape · p = 1×2 portrait · b = 2×4 hero
+    // Each module fills 2cols×4rows. Tile ORDER matters: a wide tile must be
+    // placed before the column it sits in is full, or dense flow spills it
+    // past 2 columns (e.g. "p p q" breaks, but "p q p" packs the square at the
+    // bottom). Weights below balance to ~even q/l/p with squares slightly ahead.
+    const MODULES = [
+      { tiles: ["q", "q"],           w: 4 },  // two stacked squares
+      { tiles: ["q", "p", "p"],      w: 2 },  // square over two portraits
+      { tiles: ["p", "q", "p"],      w: 2 },  // portraits flanking a bottom square
+      { tiles: ["q", "l", "l"],      w: 2 },  // square over two landscapes
+      { tiles: ["l", "l", "q"],      w: 2 },  // two landscapes over a square
+      { tiles: ["l", "l", "p", "p"], w: 2 },  // two landscapes over two portraits
+      { tiles: ["p", "p", "p", "p"], w: 1 },  // four portraits
+      { tiles: ["l", "l", "l", "l"], w: 1 },  // four landscapes
+      { tiles: ["b"],                w: 1 },  // one big 2×4 hero (rare)
+    ];
+    const WEIGHT_TOTAL = MODULES.reduce((a, m) => a + m.w, 0);
+    const pickModule = () => {
+      let r = Math.random() * WEIGHT_TOTAL;
+      for (const m of MODULES) { if ((r -= m.w) < 0) return m; }
+      return MODULES[0];
+    };
+
+    // a fixed sequence (the "set") generated once, then cloned for the loop
+    const SET_MODULES = 9;
+    const SET_SEQ = [];
+    for (let i = 0; i < SET_MODULES; i++) SET_SEQ.push(...pickModule().tiles);
+    const SET_COUNT = SET_SEQ.length;   // distinct placeholder tiles per set
+    const COPIES = 3;                   // 1 middle band + 1 buffer copy each side
+
+    const masonry = document.getElementById("masonry");
+    function makeTile(size, idx) {
+      const b = document.createElement("button");
+      b.className = "tile " + size;
+      b.type = "button";
+      b.dataset.index = String(idx);
+      const n = String(idx + 1).padStart(2, "0");
+      b.setAttribute("aria-label", "Open project " + n);
+      b.innerHTML = '<span class="num"><span class="hash">#</span>' + n + "</span>";
+      return b;
+    }
+    for (let c = 0; c < COPIES; c++) {
+      SET_SEQ.forEach((size, idx) => {
+        const tile = makeTile(size, idx);
+        if (c > 0) tile.setAttribute("aria-hidden", "true");  // clones
+        masonry.appendChild(tile);
+      });
+    }
+
+    // ── 2. drag + momentum + seamless infinite wrap ───────────────────
+    const car = document.getElementById("carousel");
+    let setW = 0;                       // pixel width of one set (the loop period)
+
+    // re-measure the loop period and keep the scroll position inside the
+    // middle band [setW, 2·setW); jumping by whole sets is invisible because
+    // every copy is identical
+    function measure() {
+      const kids = masonry.children;
+      if (kids.length <= SET_COUNT) { setW = 0; return; }
+      setW = kids[SET_COUNT].offsetLeft - kids[0].offsetLeft;
+      wrap();
+    }
+    function wrap() {
+      if (setW <= 0) return;
+      const x = car.scrollLeft;
+      if (x < setW || x >= 2 * setW) {
+        const n = (((x - setW) % setW) + setW) % setW;   // fold into [0, setW)
+        car.scrollLeft = setW + n;
+      }
+    }
+
+    // deferred pointer-capture: do NOT capture on pointerdown (that swallows
+    // the click that should open a tile). Only once movement passes the
+    // threshold do we treat it as a drag and capture. (DIGITS-carousel trick.)
+    let startX, startLeft = 0, ptId, dragging = false, suppressClick = false;
+    let lastX = 0, lastT = 0, vel = 0, glideId = 0;
+    let interacting = false;   // true during an active drag/glide — pauses the field
+    let scrolling = false;     // true during native trackpad/wheel scroll + its momentum
+
+    car.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.pointerType === "touch") return;
+      startX = e.clientX; startLeft = car.scrollLeft; ptId = e.pointerId;
+      dragging = false; vel = 0; lastX = e.clientX; lastT = performance.now();
+      cancelAnimationFrame(glideId);
+    });
+    car.addEventListener("pointermove", (e) => {
+      if (startX === undefined || e.pointerType === "touch") return;
+      const dx = e.clientX - startX;
+      if (!dragging && Math.abs(dx) > 5) {
+        dragging = true;
+        car.classList.add("dragging");
+        try { car.setPointerCapture(ptId); } catch (_) {}
+        interacting = true; syncField();   // hand the main thread to scrolling
+      }
+      if (dragging) {
+        car.scrollLeft = startLeft - dx;
+        wrap();
+        const now = performance.now();
+        const dt = now - lastT || 16;
+        vel = (e.clientX - lastX) / dt;   // px per ms
+        lastX = e.clientX; lastT = now;
+      }
+    });
+    function endDrag() {
+      if (startX === undefined) return;
+      if (dragging) {
+        suppressClick = true;             // a real drag — eat the trailing click
+        try { car.releasePointerCapture(ptId); } catch (_) {}
+        car.classList.remove("dragging");
+        let v = vel * 16;                 // → px per frame
+        const glide = () => {
+          if (Math.abs(v) < 0.3) { interacting = false; syncField(); return; }  // glide done → field resumes
+          car.scrollLeft -= v;
+          wrap();
+          v *= 0.94;                      // friction
+          glideId = requestAnimationFrame(glide);
+        };
+        glide();
+      }
+      startX = undefined; dragging = false;
+    }
+    car.addEventListener("pointerup", endDrag);
+    car.addEventListener("pointercancel", endDrag);
+    car.addEventListener("dragstart", (e) => e.preventDefault());
+    // swallow only the click that terminates a real drag
+    car.addEventListener("click", (e) => {
+      if (suppressClick) { suppressClick = false; e.preventDefault(); e.stopPropagation(); }
+    }, true);
+
+    // Native trackpad/wheel scrolling doesn't fire pointer events, so the drag
+    // pause above never engages for a two-finger scroll. Detect the scroll
+    // gesture (+ its momentum) and pause the field for its duration too. There's
+    // no reliable "scrollend" across browsers, so resume on a short idle debounce.
+    let scrollIdle = 0;
+    function markScrolling() {
+      if (!scrolling) { scrolling = true; syncField(); }
+      clearTimeout(scrollIdle);
+      scrollIdle = setTimeout(() => { scrolling = false; syncField(); }, 150);
+    }
+    // wrap on native scroll too (trackpad / momentum), throttled to a frame
+    let wrapPending = false;
+    car.addEventListener("scroll", () => {
+      markScrolling();
+      if (!wrapPending) {
+        wrapPending = true;
+        requestAnimationFrame(() => { wrapPending = false; wrap(); });
+      }
+    }, { passive: true });
+    car.addEventListener("wheel", markScrolling, { passive: true });
+    // and during vertical page scrolling past the section (fires window scroll,
+    // not the carousel's) — the field is decorative, so pausing it is free.
+    window.addEventListener("scroll", markScrolling, { passive: true });
+
+    // start in the middle band once the grid has laid out. The first frame
+    // after load can land before the clamp()-sized columns resolve, so retry
+    // until we get a real period, then park on the second copy (copy 0 is the
+    // left buffer to wrap into).
+    window.addEventListener("resize", measure);
+    (function initLoop(tries) {
+      measure();
+      if (setW > 0) car.scrollLeft = setW;
+      else if (tries < 30) requestAnimationFrame(() => initLoop(tries + 1));
+    })(0);
+
+    // ── 3. modal ──────────────────────────────────────────────────────
+    const root = document.getElementById("modal-root");
+    const numEl = document.getElementById("modal-num");
+    const leadEl = document.getElementById("modal-lead");
+    let modalField = null;   // set up in §4
+
+    function openModal(i) {
+      const n = String(i + 1).padStart(2, "0");
+      numEl.textContent = n;
+      leadEl.textContent = "A short one-line summary of project " + n + " lives here.";
+      root.classList.add("open");
+      root.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+      if (modalField && !reduceMotion) modalField.start();
+    }
+    function closeModal() {
+      root.classList.remove("open");
+      root.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+      if (modalField) modalField.stop();
+    }
+    masonry.addEventListener("click", (e) => {
+      const tile = e.target.closest(".tile");
+      if (tile) openModal(parseInt(tile.dataset.index, 10) || 0);
+    });
+    document.getElementById("modal-close").addEventListener("click", closeModal);
+    root.addEventListener("pointerdown", (e) => {
+      if (e.target === root || e.target.classList.contains("modal-scrim")
+          || e.target.classList.contains("modal-bg")) closeModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && root.classList.contains("open")) closeModal();
+    });
+
+    // ── 4. flowing monospace character field ──────────────────────────
+    // Columns of glyphs drift upward at varying speeds (a "data current")
+    // while a slow sine-interference field modulates each glyph's opacity,
+    // so it shimmers with structure. Same DNA as the hero's sine curves.
+    function asciiField(canvas, opts) {
+      const ctx = canvas.getContext("2d");
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const ramp = "01<>{}[]()/\\=+*-|;:.";
+      const charPx = opts.charPx || 18;
+      const advW = charPx * 0.6;
+      const color = opts.color;
+      const baseA = opts.baseAlpha;
+      const ampA = opts.ampAlpha;
+      const speed = opts.speed || 1;     // shimmer speed
+      const flow = opts.flow || 1;       // upward drift speed
+      let W = 0, H = 0, cols = 0, rows = 0, scroll = [], colSpd = [];
+      let running = false, rafId = 0, lastDraw = 0;
+      // this is a subtle background shimmer — 30fps is indistinguishable from 60
+      // and halves the main-thread cost vs repainting on every display frame.
+      const FRAME_MS = 1000 / 30;
+
+      const hash = (a, b) => {
+        const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+        return x - Math.floor(x);
+      };
+
+      function resize() {
+        W = canvas.clientWidth; H = canvas.clientHeight;
+        if (!W || !H) return;
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        cols = Math.ceil(W / advW) + 1;
+        rows = Math.ceil(H / charPx) + 1;
+        scroll = new Array(cols).fill(0);
+        colSpd = new Array(cols).fill(0).map((_, c) => 0.4 + hash(c, 7) * 1.1);
+        ctx.font = charPx + "px ui-monospace, Menlo, Consolas, 'Courier New', monospace";
+        ctx.textBaseline = "top";
+      }
+
+      function frame(now) {
+        if (!running) return;
+        rafId = requestAnimationFrame(frame);          // keep the loop alive at display rate…
+        const since = now - lastDraw;
+        if (since < FRAME_MS) return;                  // …but only actually repaint ~30×/sec
+        const dt = Math.min(0.05, since / 1000 || 0);
+        lastDraw = now;
+        const t = now / 1000;
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = color;
+        for (let c = 0; c < cols; c++) {
+          scroll[c] += colSpd[c] * flow * dt;
+          const off = scroll[c];
+          const x = c * advW;
+          for (let r = 0; r < rows; r++) {
+            const wv = 0.5 + 0.5
+              * Math.sin(c * 0.18 + r * 0.12 + t * 0.8 * speed)
+              * Math.cos(c * 0.07 - r * 0.15 + t * 0.5 * speed);
+            const a = baseA + ampA * wv;
+            if (a < 0.02) continue;
+            const gi = Math.floor(r + off);
+            const ch = ramp[(hash(c * 1.7, gi * 1.3) * ramp.length) | 0];
+            ctx.globalAlpha = a;
+            ctx.fillText(ch, x, r * charPx);
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function start() {
+        if (running) return;
+        if (!cols) resize();
+        running = true; lastDraw = 0;   // 0 → repaint on the very next frame
+        rafId = requestAnimationFrame(frame);
+      }
+      function stop() { running = false; cancelAnimationFrame(rafId); }
+
+      window.addEventListener("resize", () => { resize(); });
+      resize();
+      return { start, stop, resize, isRunning: () => running };
+    }
+
+    // section backdrop — pumpkin on cream, mostly hidden behind the tiles
+    const sectionField = asciiField(document.getElementById("projects-bg"), {
+      color: PUMPKIN, charPx: 22, baseAlpha: 0.05, ampAlpha: 0.11, speed: 1, flow: 1,
+    });
+    // modal backdrop — slower and fainter on the dark scrim, so the eye
+    // stays on the panel rather than the moving text behind it
+    modalField = asciiField(document.getElementById("modal-bg"), {
+      color: PUMPKIN_HOT, charPx: 20, baseAlpha: 0.05, ampAlpha: 0.13, speed: 0.6, flow: 0.6,
+    });
+
+    // run the section field only while it's on screen, the tab is active, the
+    // visitor hasn't asked the OS to reduce motion — and NOT while a drag/glide
+    // is in flight, so the carousel keeps the full main thread during interaction
+    // (the background is mostly hidden behind the tiles anyway).
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let onScreen = false;
+    function syncField() {
+      if (onScreen && !document.hidden && !reduceMotion && !interacting && !scrolling) sectionField.start();
+      else sectionField.stop();
+    }
+    const io = new IntersectionObserver((entries) => {
+      onScreen = entries[0].isIntersecting;
+      syncField();
+    }, { threshold: 0 });
+    io.observe(document.getElementById("projects"));
+    document.addEventListener("visibilitychange", syncField);
+  })();
+  </script>
+</body>
+</html>
