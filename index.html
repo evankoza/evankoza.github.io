@@ -815,6 +815,8 @@
 
   @media (max-width: 560px) {
     .modal-photos { grid-template-columns: repeat(2, 1fr); }
+    /* the hero is tight on phones — drop the "make your own" invite there */
+    .trust-bar a.headshot-cta { display: none; }
   }
 </style>
 </head>
@@ -1148,12 +1150,15 @@
     // portrait size, glyph size, and every absolute offset so the whole
     // face+banner+curves stack shrinks together as one piece.
     const HERO_REF_W = 1100;     // hero width (CSS px) the tuned values assume
-    const SMALL_BOOST   = 0.82;  // exponent <1 on the width ratio: lifts the head
+    const SMALL_BOOST   = 0.78;  // exponent <1 on the width ratio: lifts the head
                                  //   + offsets on small screens so they fill the
                                  //   frame; desktop (ratio 1) is left untouched
     const GLYPH_COARSEN = 0.5;   // 0..1 — how much the glyphs resist shrinking on
                                  //   small screens. Lower = chunkier / more
                                  //   "pixely" character grid the smaller the display
+    const GROUP_HOLD    = 0.82;  // exponent <1: how slowly the EVAN curves + KOZA
+                                 //   banner shrink on small screens (lower = they
+                                 //   stay bigger / shrink slower); 1 = shrink linearly
     const heroBox = document.querySelector(".hero");
     const widthRatio = () =>
       Math.min(1, (heroBox ? heroBox.offsetWidth : window.innerWidth) / HERO_REF_W);
@@ -1168,6 +1173,11 @@
     // small screens for slightly finer curves; desktop (ratio 1) keeps full PIXEL.
     const CURVE_PIX_FLOOR = 0.72;
     const curvePixel = () => PIXEL * (CURVE_PIX_FLOOR + (1 - CURVE_PIX_FLOOR) * widthRatio());
+    // the EVAN cells / KOZA banner are sized off the hero width, so they shrink
+    // linearly with it. groupHold() (>=1 below desktop, =1 at ratio 1) is folded
+    // into their CSS scale so they shrink slower — staying relatively bigger on
+    // small screens — without touching their desktop sizing.
+    const groupHold = () => Math.pow(widthRatio(), GROUP_HOLD - 1);
 
     const cells = Array.from(document.querySelectorAll(".cell"));
     const curvesEl = document.getElementById("curves");
@@ -1217,7 +1227,11 @@
       // lock the KOZA banner height to a multiple of the EVAN letter height
       // (width follows the canvas's intrinsic 1739:605 ratio automatically)
       if (state[0].h) bannerCanvas.style.height = (BANNER_MULT * state[0].h) + "px";
-      bannerCanvas.style.setProperty("--bscale", BANNER_SCALE);
+      // fold groupHold() into the curve + banner scales so both shrink slower
+      // than the hero on small screens (== their tuned values on desktop)
+      const hold = groupHold();
+      bannerCanvas.style.setProperty("--bscale", BANNER_SCALE * hold);
+      curvesEl.style.setProperty("--escale", EVAN_SCALE * hold);
       // scale the absolute vertical nudges by the same factor as the shrinking
       // cells so the banner/curves stay pinned to the face at any width
       const sc = composeScale();
