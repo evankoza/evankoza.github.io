@@ -1932,8 +1932,9 @@
         const external = !/^experiments\//.test(lnk.href);
         a.className = "btn " + (k === 0 ? "primary" : "ghost");
         a.href = lnk.href;
-        a.target = "_blank";
-        a.rel = "noopener";
+        // Internal demos open in the same tab so the "← Portfolio" link can
+        // return the visitor right back here; only off-site links get a new tab.
+        if (external) { a.target = "_blank"; a.rel = "noopener"; }
         a.innerHTML = lnk.label +
           ' <span class="arrow" aria-hidden="true">' + (external ? "&#8599;" : "&rarr;") + "</span>";
         actionsEl.appendChild(a);
