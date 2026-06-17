@@ -1137,6 +1137,19 @@
 
     const dpr = Math.max(1, window.devicePixelRatio || 1);
 
+    // Responsive composition. The EVAN cells are %-based so they shrink with the
+    // viewport, but the portrait size and the absolute vertical offsets below
+    // were dialed in at the hero's max width — so on small screens the giant
+    // 1500px portrait overflowed and the -222px/-102px nudges over-shifted the
+    // now-tiny stack. composeScale() = live hero width / reference, capped at 1
+    // (never upscale past the tuned values), and is applied uniformly to the
+    // portrait size, glyph size, and every absolute offset so the whole
+    // face+banner+curves stack shrinks together as one piece.
+    const HERO_REF_W = 1100;   // hero width (CSS px) the tuned values assume
+    const heroBox = document.querySelector(".hero");
+    const composeScale = () =>
+      Math.min(1, (heroBox ? heroBox.offsetWidth : window.innerWidth) / HERO_REF_W);
+
     const cells = Array.from(document.querySelectorAll(".cell"));
     const curvesEl = document.getElementById("curves");
     curvesEl.style.setProperty("--escale", EVAN_SCALE);
@@ -1186,7 +1199,14 @@
       // (width follows the canvas's intrinsic 1739:605 ratio automatically)
       if (state[0].h) bannerCanvas.style.height = (BANNER_MULT * state[0].h) + "px";
       bannerCanvas.style.setProperty("--bscale", BANNER_SCALE);
-      bannerCanvas.style.setProperty("--by", BANNER_Y + "px");
+      // scale the absolute vertical nudges by the same factor as the shrinking
+      // cells so the banner/curves stay pinned to the face at any width
+      const sc = composeScale();
+      bannerCanvas.style.setProperty("--by", (BANNER_Y * sc) + "px");
+      curvesEl.style.setProperty("--ey", (EVAN_Y * sc) + "px");
+      // the portrait isn't %-based, so resize it (and re-render) here too
+      layoutPortrait();
+      renderPortrait();
     }
     window.addEventListener("resize", resize);
 
@@ -1338,21 +1358,26 @@
     };
     pickScan();
 
+    let pSizeEff = P_SIZE;   // P_SIZE after the responsive compose-scale
     function layoutPortrait() {
-      portraitCanvas.style.width = P_SIZE + "px";
-      portraitCanvas.style.height = P_SIZE + "px";
-      portraitCanvas.style.setProperty("--peye", P_EYE + "px");
-      portraitCanvas.width = Math.round(P_SIZE * dpr);
-      portraitCanvas.height = Math.round(P_SIZE * dpr);
+      pSizeEff = P_SIZE * composeScale();
+      portraitCanvas.style.width = pSizeEff + "px";
+      portraitCanvas.style.height = pSizeEff + "px";
+      portraitCanvas.style.setProperty("--peye", (P_EYE * composeScale()) + "px");
+      portraitCanvas.width = Math.round(pSizeEff * dpr);
+      portraitCanvas.height = Math.round(pSizeEff * dpr);
     }
 
     function renderPortrait() {
       const img = portraitImgs[pIdx];
       if (!img || !img.complete || !img.naturalWidth) return;
 
-      const charH = (pCharEff != null) ? pCharEff : P_CHAR, charW = charH * 0.6;
-      const cols = Math.max(1, Math.floor(P_SIZE / charW));
-      const rows = Math.max(1, Math.floor(P_SIZE / charH));
+      // scale the glyph height by the same factor as pSizeEff so the cell
+      // count (and thus the face's detail) is identical at every width — only
+      // the rendered size shrinks
+      const charH = ((pCharEff != null) ? pCharEff : P_CHAR) * composeScale(), charW = charH * 0.6;
+      const cols = Math.max(1, Math.floor(pSizeEff / charW));
+      const rows = Math.max(1, Math.floor(pSizeEff / charH));
 
       // sample the centre-50% crop down to one pixel per character cell
       pSample.width = cols; pSample.height = rows;
@@ -1372,7 +1397,7 @@
 
       const ctx = portraitCtx;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, P_SIZE, P_SIZE);
+      ctx.clearRect(0, 0, pSizeEff, pSizeEff);
       ctx.font = charH + "px ui-monospace, Menlo, Consolas, 'Courier New', monospace";
       ctx.textBaseline = "top";
 
