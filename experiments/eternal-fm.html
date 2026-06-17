@@ -184,16 +184,6 @@
   </div>
 
   <p class="note">
-    <b>How it works.</b> Each track is fetched and decoded into a Web&nbsp;Audio buffer once, then a
-    Web&nbsp;Worker runs one STFT pass over the raw PCM: spectral&#8209;flux onsets &rarr; an
-    autocorrelation tempo with an octave&#8209;error guard &rarr; a phase&#8209;aligned beat grid &rarr;
-    per&#8209;beat <b>chroma</b> (12 pitch classes) and <b>timbre</b> (log&#8209;band energies) vectors.
-    Candidate jumps are phrase&#8209;aligned &mdash; a whole number of 16&#8209;beat phrases away from where the
-    music would have gone &mdash; and scored on spectral similarity, so leaps land on the beat and feel
-    intentional. The <b>dial</b> sets how adventurous the radio is; the <b>timeline</b> telegraphs each
-    armed jump and pulses the instant it fires (forward skips arc above, loops below). Between songs a
-    compatibility graph &mdash; the field of nodes below &mdash; picks what flows next. No ML, no backend:
-    just classic signal processing running entirely client&#8209;side.
     <span class="cc">Music: Broke For Free &mdash; <i>Directionless EP</i>, licensed
       <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;3.0</a>
       (<a href="https://brokeforfree.com" target="_blank" rel="noopener">brokeforfree.com</a>).
