@@ -1178,6 +1178,10 @@
     // into their CSS scale so they shrink slower — staying relatively bigger on
     // small screens — without touching their desktop sizing.
     const groupHold = () => Math.pow(widthRatio(), GROUP_HOLD - 1);
+    // extra thinning on the curve stroke at small widths (=1 at desktop). Higher
+    // STROKE_THIN = thinner lines on small screens; 0 = no extra thinning.
+    const STROKE_THIN = 0.18;
+    const strokeThin = () => Math.pow(widthRatio(), STROKE_THIN);
 
     const cells = Array.from(document.querySelectorAll(".cell"));
     const curvesEl = document.getElementById("curves");
@@ -1480,7 +1484,7 @@
       // blend between a constant width (RESP=0) and one proportional to cell
       // size (RESP=1); at w === STROKE_REF_W the result is STROKE either way
       const sizeFactor = 1 - STROKE_RESP + STROKE_RESP * (w / STROKE_REF_W);
-      srcCtx.lineWidth = Math.max(0.5, STROKE * sizeFactor);
+      srcCtx.lineWidth = Math.max(0.5, STROKE * sizeFactor * strokeThin());
       srcCtx.lineJoin = "round";
       srcCtx.lineCap = "round";
       srcCtx.stroke();
