@@ -278,18 +278,22 @@
   }
   .contact-list a:hover { color: var(--pumpkin); }
   /* the location is a button so it can open the "which London?" map modal,
-     but it should read as just another contact line — with a dotted hint. */
+     but it should read as exactly another contact line. */
   .loc-btn {
     font-family: inherit;
+    font-size: 0.92rem;
+    color: var(--ink);
     background: none;
     border: none;
     padding: 0;
     cursor: pointer;
     text-align: left;
-    border-bottom: 1px dotted var(--ink-faint);
-    transition: color .2s ease, border-color .2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    transition: color .2s ease;
   }
-  .loc-btn:hover, .loc-btn:focus-visible { color: var(--pumpkin); border-color: var(--pumpkin); }
+  .loc-btn:hover, .loc-btn:focus-visible { color: var(--pumpkin); }
   .contact-list .tag {
     font-family: var(--mono);
     font-size: 10px;
@@ -830,6 +834,9 @@
 
   /* ══ "Which London?" map modal ═══════════════════════════════
      Two side-by-side OSM maps; the right one is the impostor. */
+  /* let the joke run the full width of the panel instead of a narrow
+     left column (the project modal keeps its tighter 56ch measure). */
+  #london-root .modal-lead { max-width: none; }
   .london-maps {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1027,9 +1034,9 @@
           </div>
           <div class="xp-org">Real Canadian Superstore &middot; London, ON</div>
           <ul class="xp-list">
+            <li>Built a department wide automation tool to streamline manual invoicing by integrating store-issued inventory systems &mdash; significantly improving my invoice workflow.</li>
             <li>Day-to-day ownership of inventory, invoicing, plano-grams, merchandising, and maintenance.</li>
             <li>Worked with the team to keep store <strong>02812&rsquo;s Home department the most profitable of any RCSS in Ontario</strong>.</li>
-            <li>Built a personal automation tool to streamline manual invoicing by integrating store-issued inventory systems &mdash; significantly improving my individual workflow.</li>
           </ul>
           <div class="project">
             <div class="project-t">Invoicing automation tool</div>
@@ -1138,6 +1145,7 @@
        Opened from the "loc · London, ON" contact line. Two OSM maps
        side by side; the joke is that I mean the Ontario one. -->
   <div class="modal-root" id="london-root" aria-hidden="true">
+    <canvas class="modal-bg" id="london-bg" aria-hidden="true"></canvas>
     <div class="modal-scrim" data-london-close></div>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="london-title">
       <button class="modal-close" id="london-close" aria-label="Close">&times;</button>
@@ -2122,15 +2130,18 @@
     // which London I mean. Self-contained: its own open/close, scrim-click,
     // and Escape, mirroring the project modal above.
     const londonRoot = document.getElementById("london-root");
+    let londonField = null;   // character-field backdrop, set up in §5
     function openLondon() {
       londonRoot.classList.add("open");
       londonRoot.setAttribute("aria-hidden", "false");
       document.body.style.overflow = "hidden";
+      if (londonField && !reduceMotion) londonField.start();
     }
     function closeLondon() {
       londonRoot.classList.remove("open");
       londonRoot.setAttribute("aria-hidden", "true");
       document.body.style.overflow = "";
+      if (londonField) londonField.stop();
     }
     document.getElementById("loc-london").addEventListener("click", openLondon);
     document.getElementById("london-close").addEventListener("click", closeLondon);
@@ -2230,6 +2241,10 @@
     // modal backdrop — slower and fainter on the dark scrim, so the eye
     // stays on the panel rather than the moving text behind it
     modalField = asciiField(document.getElementById("modal-bg"), {
+      color: PUMPKIN_HOT, charPx: 20, baseAlpha: 0.05, ampAlpha: 0.13, speed: 0.6, flow: 0.6,
+    });
+    // same backdrop for the "which London?" modal
+    londonField = asciiField(document.getElementById("london-bg"), {
       color: PUMPKIN_HOT, charPx: 20, baseAlpha: 0.05, ampAlpha: 0.13, speed: 0.6, flow: 0.6,
     });
 
