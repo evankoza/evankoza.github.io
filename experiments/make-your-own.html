@@ -404,9 +404,10 @@
           <div id="loop-sliders"></div>
           <hr style="border:none; border-top:1px solid var(--line); margin:14px 0" />
           <p class="hint" style="margin-top:0">
-            Record the live stage to an animated GIF. Turn on <em>Loop in &amp; out</em>
-            and set the length to one full cycle for a seamless loop. The encoder is
-            fetched once from a CDN — your images never leave the browser.
+            Record a seamless GIF of one full cycle — it rewinds to the start and
+            captures the intro, hold and outro, then loops. Length is set by the
+            <em>rotations</em> and <em>hold</em> knobs above. The encoder is fetched
+            once from a CDN — your images never leave the browser.
           </p>
           <div id="gif-sliders"></div>
           <div class="btnrow" style="align-items:center">
@@ -506,8 +507,8 @@
       pSpin: 700, pCut: 154, pGamma: 1.0, pScanMin: 3, pScanMax: 8,
       pSize: 540, pEye: -48,
       // loop / outro + gif export
-      loop: false, loopTurns: 0.5, loopHold: 1.4,
-      gifDur: 4, gifFps: 15, gifW: 480,
+      loop: false, loopTurns: 2, loopHold: 1.4,
+      gifFps: 15, gifW: 480,
     };
     const SAMPLES = 700, PAD = 0.16, PHASE_SCALE = Math.PI;
     const STROKE_REF_W = 275, GLITCH_SPD = 2.0, GLITCH_STRIP = 3;
@@ -515,8 +516,11 @@
     // a clean spin needs the phase displaced by a WHOLE multiple of 2π (per the
     // hero engine) so the figure returns to the exact point it started.
     const spinTurns = (a) => Math.max(1, Math.round(a * cfg.spinTurns));
-    // how far (in whole turns) each curve spins during a loop in/out leg
-    const loopTurns = (a) => Math.max(1, Math.round(a * cfg.loopTurns));
+    // how many full rotations every curve makes during a loop in/out leg. A
+    // whole number keeps the displacement a clean multiple of 2π so each figure
+    // returns exactly to where it started — and it's uniform across curves so
+    // the "rotations" knob means literally that, not a per-curve frequency mix.
+    const loopTurns = () => Math.max(1, Math.round(cfg.loopTurns));
 
     // ── default curve set: the EVAN letters ────────────────────────────────
     const PUMPKIN = "#C95000";
@@ -817,7 +821,7 @@
     // backwards. Each restart sends the curves spinning again.
     let loopState = "in";            // in · holdIn · out · holdOut
     let loopT0 = 0;                  // ms a hold began
-    const loopAway = (s) => s.goal - 2 * Math.PI * loopTurns(s.cfg.a);
+    const loopAway = (s) => s.goal - 2 * Math.PI * loopTurns();
     function loopTargetFor(s) {
       return (loopState === "out" || loopState === "holdOut") ? loopAway(s) : s.goal;
     }
@@ -1233,7 +1237,7 @@
     });
 
     const ls = document.getElementById("loop-sliders");
-    makeSlider(ls, "loopTurns", "rotations", 0.5, 4, 0.5, fix(1));
+    makeSlider(ls, "loopTurns", "rotations", 1, 6, 1, (v) => (v | 0) + ((v | 0) === 1 ? " turn" : " turns"));
     makeSlider(ls, "loopHold", "hold", 0, 4, 0.1, (v) => v.toFixed(1) + "s");
 
     // ── GIF export ───────────────────────────────────────────────────────────
@@ -1241,7 +1245,6 @@
     // record: it's fetched from a CDN on first use so the page stays build-free.
     // Encoding happens entirely in-browser (web workers) — no pixels are uploaded.
     const gs = document.getElementById("gif-sliders");
-    makeSlider(gs, "gifDur", "length", 1, 10, 0.5, (v) => v.toFixed(1) + "s");
     makeSlider(gs, "gifFps", "fps", 6, 24, 1, (v) => v | 0);
     makeSlider(gs, "gifW", "width", 240, 720, 20, px);
 
@@ -1310,11 +1313,29 @@
       const gif = new GIF({ workers: 2, quality: 8, workerScript: gifWorkerURL,
         width: W, height: H, background: BG_HEX });
       const fps = cfg.gifFps, delay = Math.round(1000 / fps);
-      const total = Math.max(1, Math.round(cfg.gifDur * fps));
-      let captured = 0;
+      const HARD_CAP = Math.round(20 * fps);   // safety: never record past ~20s
+
+      // Rewind to the very top of the intro and force a full loop, so the GIF
+      // always opens on the initial image and plays a clean intro → hold →
+      // outro instead of catching the live animation halfway through. We then
+      // capture exactly one cycle (until it loops back to the start), which is
+      // seamless because the end of the outro holds the same spun-out pose the
+      // intro begins from. Whatever the toggle was set to is restored after.
+      const prevLoop = cfg.loop, prevChecked = loopToggle.checked;
+      const restoreLoop = () => {
+        cfg.loop = prevLoop; loopToggle.checked = prevChecked;
+        if (!prevLoop) { pCharDir = 1; pCharEff = null; }
+      };
+      cfg.loop = true; loopToggle.checked = true;
+      loopState = "in"; loopT0 = 0;
+      for (const s of state) s.phase = loopAway(s);
+      restartCharIntro();
+      pIdx = 0; pLastSwitch = 0; pickScan();
+      renderPortrait();
 
       gif.on("progress", (p) => { gifStatus.textContent = "encoding " + Math.round(p * 100) + "%"; });
       gif.on("finished", (blob) => {
+        restoreLoop();
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url; a.download = "compile.gif"; a.click();
@@ -1323,13 +1344,21 @@
       });
 
       startStep();   // make sure the stage is animating while we sample it
+      let captured = 0, sawOutro = false;
       const grab = () => {
         compositeStage(octx, scale, stageEl.getBoundingClientRect());
         gif.addFrame(octx, { copy: true, delay });
         captured++;
-        gifStatus.textContent = "recording " + captured + "/" + total;
-        if (captured < total) setTimeout(() => requestAnimationFrame(grab), delay);
-        else gif.render();
+        gifStatus.textContent = "recording " + captured + " frames…";
+        if (loopState === "holdOut") sawOutro = true;
+        // stop the instant the cycle wraps back to the intro — that next frame
+        // would duplicate frame 0, so leaving it out keeps the loop seamless.
+        const cycleDone = sawOutro && loopState === "in";
+        if (!cycleDone && captured < HARD_CAP) {
+          setTimeout(() => requestAnimationFrame(grab), delay);
+        } else {
+          gif.render();
+        }
       };
       requestAnimationFrame(grab);
     });
