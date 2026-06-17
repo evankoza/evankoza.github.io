@@ -1979,10 +1979,11 @@
 
     // ── 3a. remember-where-you-were ───────────────────────────────────
     // Demos open in a new tab and carry a "← Portfolio" link back to
-    // index.html?return=1. When the visitor clicks a demo link we stash
-    // the current scroll position (and which modal is open, if any) so the
+    // index.html#return. When the visitor clicks a demo link we stash the
+    // current scroll position (and which modal is open, if any) so the
     // return trip can drop them right back where they left off. A normal
-    // visit (no ?return=1) ignores the stash and starts at the top.
+    // visit (no #return) ignores the stash and starts at the top. We use a
+    // hash rather than a query string so no host or dev server can strip it.
     const RETURN_KEY = "portfolioReturn";
     document.addEventListener("click", (e) => {
       const a = e.target.closest("a");
@@ -1996,12 +1997,9 @@
       } catch (_) { /* private mode / quota — just skip restore */ }
     });
     (function maybeRestore() {
-      const params = new URLSearchParams(location.search);
-      if (params.get("return") !== "1") return;
+      if (location.hash !== "#return") return;
       // Strip the marker so a refresh or bookmark won't re-trigger a restore.
-      params.delete("return");
-      history.replaceState(null, "",
-        location.pathname + (params.toString() ? "?" + params : "") + location.hash);
+      history.replaceState(null, "", location.pathname + location.search);
       let state = null;
       try { state = JSON.parse(localStorage.getItem(RETURN_KEY) || "null"); } catch (_) {}
       try { localStorage.removeItem(RETURN_KEY); } catch (_) {}
