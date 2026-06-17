@@ -989,6 +989,8 @@
           <ul class="contact-list">
             <li><a href="mailto:evankoza@hotmail.com"><span class="tag">@</span>evankoza@hotmail.com</a></li>
             <li><a href="tel:+12263785926"><span class="tag">tel</span>+1 (226) 378-5926</a></li>
+            <li><a href="https://x.com/koh_zuh" target="_blank" rel="noopener"><span class="tag">x</span>@koh_zuh</a></li>
+            <li><a href="https://www.linkedin.com/in/evankoza" target="_blank" rel="noopener"><span class="tag">in</span>evankoza</a></li>
             <li><button type="button" class="loc-btn" id="loc-london" aria-haspopup="dialog"><span class="tag">loc</span>London, ON</button></li>
           </ul>
         </div>
@@ -1156,12 +1158,12 @@
       <div class="london-maps">
         <figure class="london-map">
           <iframe loading="lazy" title="Map of London, Ontario, Canada"
-            src="https://www.openstreetmap.org/export/embed.html?bbox=-81.40%2C42.88%2C-81.08%2C43.08&amp;layer=mapnik&amp;marker=42.9849%2C-81.2453"></iframe>
+            src="https://www.openstreetmap.org/export/embed.html?bbox=-84.50%2C41.40%2C-78.00%2C44.60&amp;layer=mapnik&amp;marker=42.9849%2C-81.2453"></iframe>
           <figcaption class="london-cap"><span class="flag">🇨🇦</span> London, Ontario <span class="map-tag yes">this one →</span></figcaption>
         </figure>
         <figure class="london-map london-map--wrong">
           <iframe loading="lazy" title="Map of London, England"
-            src="https://www.openstreetmap.org/export/embed.html?bbox=-0.36%2C51.40%2C0.10%2C51.62&amp;layer=mapnik&amp;marker=51.5074%2C-0.1278"></iframe>
+            src="https://www.openstreetmap.org/export/embed.html?bbox=-3.40%2C49.80%2C3.10%2C53.00&amp;layer=mapnik&amp;marker=51.5074%2C-0.1278"></iframe>
           <figcaption class="london-cap"><span class="flag">🏴󠁧󠁢󠁥󠁮󠁧󠁿</span> London, England <span class="map-tag no">not this one</span></figcaption>
         </figure>
       </div>
@@ -1171,7 +1173,9 @@
 
   <footer class="site-footer">
     &copy; Evan Koza &mdash; built from scratch &middot;
-    <a href="mailto:evankoza@hotmail.com">evankoza@hotmail.com</a>
+    <a href="mailto:evankoza@hotmail.com">evankoza@hotmail.com</a> &middot;
+    <a href="https://x.com/koh_zuh" target="_blank" rel="noopener">X</a> &middot;
+    <a href="https://www.linkedin.com/in/evankoza" target="_blank" rel="noopener">LinkedIn</a>
   </footer>
 
 
@@ -2146,7 +2150,7 @@
     document.getElementById("loc-london").addEventListener("click", openLondon);
     document.getElementById("london-close").addEventListener("click", closeLondon);
     londonRoot.addEventListener("pointerdown", (e) => {
-      if (e.target === londonRoot || e.target.hasAttribute("data-london-close")) closeLondon();
+      if (!e.target.closest(".modal")) closeLondon();
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && londonRoot.classList.contains("open")) closeLondon();
