@@ -1686,6 +1686,18 @@
         photos: [],
       },
       {
+        label: "Eternal FM",
+        title: "Eternal FM",
+        lead: "An infinite playlist machine: songs play forever, jumping between musically similar moments so a track loops seamlessly and one song flows into the next.",
+        description: "An Eternal Jukebox–style web player I built from the signal processing up. The whole song is decoded into a Web Audio buffer, so a “quantum leap” is just a different read offset — completely gapless. To decide where it can jump, a Web Worker runs a full DSP pass on the raw waveform: spectral flux → onset envelope → tempo and beat grid → per-beat chroma and timbre vectors. Candidate jumps are phrase-aligned (a whole number of 16-beat phrases away) and scored on musical similarity, so leaps land on the beat and feel intentional. Between songs, a compatibility graph picks what flows next. The public demo runs 100% client-side on Creative Commons tracks, with a live timeline that telegraphs each upcoming jump and pulses as it fires.",
+        objective: "Recreate the Infinite Jukebox’s never-ending playback with my own DSP — no ML black box, just classic signal processing I can explain end to end.",
+        stack: ["TypeScript", "Web Audio API", "Web Workers", "DSP / FFT", "Vite"],
+        links: [
+          { label: "Source", href: "https://github.com/evankoza/eternal-fm" },
+        ],
+        photos: [],
+      },
+      {
         label: "Lissajous Toy",
         title: "Lissajous Toy",
         lead: "Click any letter to reshape its curve — a playground for the harmonic curves behind the homepage banner.",
