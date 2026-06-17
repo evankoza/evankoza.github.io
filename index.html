@@ -78,7 +78,9 @@
      painting over them). */
   .intro {
     position: relative;
-    min-height: 100vh;
+    min-height: 100vh;       /* fallback for browsers without dynamic-viewport units */
+    min-height: 100dvh;      /* dvh tracks the live viewport, so iOS Safari's URL bar
+                                doesn't overlap the bottom-pinned trust bar on load */
     display: flex;
     flex-direction: column;
     overflow: hidden;
