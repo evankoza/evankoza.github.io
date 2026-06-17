@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Play-Together Bot — Demo</title>
+<style>
+  :root{
+    /* Discord light theme, warmed to the site palette (cream + pumpkin) */
+    --bg-main:#FBF9F3; --bg-side:#ECEAE3; --bg-rail:#E1DDD3; --bg-input:#EFEBE2;
+    --text:#1c1b18; --muted:rgba(28,27,24,.56); --faint:rgba(28,27,24,.40); --header:#14120e;
+    --link:#C95000; --accent:#C95000; --accent-hi:#F2622E;
+    --green:#3E7D4F; --green-hi:#356b44;
+    --btn:#E7E2D7; --btn-hi:#DCD6C8; --btn-ink:#2c2a25;
+    --embed:#F4F1E9; --embed-bar:#C95000;
+    --line:rgba(28,27,24,.12); --hair:rgba(28,27,24,.22); --pill:#DED9CD;
+    --danger:#C0392B; --danger-hi:#A93226; --select:#FFFFFF; --warn:#B7791F;
+    --surf2:#E6E2D8; --hover:#F1ECE2; --user:#5b4a39; --softtext:#3a362f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:#DDD8CC;color:var(--text);
+    font:15px/1.4 "gg sans","Segoe UI",Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;display:flex;min-height:100vh;padding:18px}
+
+  /* compile-style header — shared chrome across the experiments */
+  /* margin:auto (not justify/align center) so the stack stays centered when it
+     fits but the top stays scroll-reachable when header + card exceed the viewport */
+  .wrap{width:100%;max-width:780px;margin:auto;display:flex;flex-direction:column;gap:14px}
+  .eyebrow{font-family:"Consolas",ui-monospace,Menlo,monospace;font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent)}
+  .eyebrow .prompt{color:var(--faint)}
+  .topbar{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  .topbar h1{font-size:clamp(1.4rem,3vw,2rem);font-weight:800;letter-spacing:-.03em;
+    line-height:1.05;margin:6px 0 0;color:var(--header)}
+  .topbar .sub{margin:6px 0 0;color:var(--muted);font-size:.92rem;line-height:1.5;max-width:62ch}
+  .topbar .links{display:flex;gap:10px;flex-shrink:0}
+  .topbar a.nav{font-family:"Consolas",ui-monospace,Menlo,monospace;font-size:12px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);text-decoration:none;border:1px solid var(--line);
+    border-radius:999px;padding:8px 14px;background:var(--bg-side);white-space:nowrap;
+    transition:color .15s,border-color .15s,background .15s}
+  .topbar a.nav:hover{color:var(--accent);border-color:var(--accent)}
+
+  .app{width:100%;max-width:780px;height:min(84vh,740px);display:flex;position:relative;
+    background:var(--bg-main);border-radius:12px;overflow:hidden;
+    box-shadow:0 18px 50px rgba(28,27,24,.18);border:1px solid var(--line)}
+
+  .rail{width:60px;flex:none;background:var(--bg-rail);padding:10px 0;
+    display:flex;flex-direction:column;align-items:center;gap:8px}
+  .rail .pill{width:44px;height:44px;border-radius:50%;background:var(--accent);
+    display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:17px;cursor:default}
+  .rail .sep{width:30px;height:2px;background:rgba(28,27,24,.12);border-radius:2px}
+
+  .chan{width:185px;flex:none;background:var(--bg-side);display:flex;flex-direction:column}
+  .chan .srv{height:48px;display:flex;align-items:center;padding:0 14px;font-weight:600;
+    color:var(--header);font-size:15px;border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(28,27,24,.05)}
+  .chan .list{padding:10px 8px;display:flex;flex-direction:column;gap:2px}
+  .chan .ch{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:5px;
+    color:var(--muted);font-size:15px;cursor:default}
+  .chan .ch.active{background:var(--pill);color:var(--header)}
+  .chan .ch .hash{font-size:18px;line-height:1;opacity:.6}
+  .chan .me{margin-top:auto;height:52px;background:var(--surf2);display:flex;align-items:center;gap:8px;padding:0 10px}
+  .chan .me .av{width:32px;height:32px;border-radius:50%;background:var(--user);flex:none;
+    display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px}
+  .chan .me .nm{font-size:13px;font-weight:600;color:var(--header);line-height:1.1}
+  .chan .me .st{font-size:11px;color:var(--muted)}
+
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg-main)}
+  .top{height:48px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px;
+    border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(28,27,24,.05);z-index:2}
+  .top .hash{font-size:22px;color:var(--muted)}
+  .top .nm{font-weight:600;color:var(--header)}
+  .top .desc{color:var(--muted);font-size:13px;border-left:1px solid var(--hair);padding-left:10px;margin-left:4px}
+  .top .demo{margin-left:auto;font-size:11px;color:var(--muted);background:var(--surf2);
+    padding:3px 9px;border-radius:10px;letter-spacing:.3px}
+
+  .scroll{flex:1;overflow-y:auto;padding:16px 16px 6px}
+  .scroll::-webkit-scrollbar{width:8px}
+  .scroll::-webkit-scrollbar-thumb{background:rgba(28,27,24,.18);border-radius:8px}
+
+  .msg{display:flex;gap:14px;padding:7px 0 5px;animation:pop .16s ease}
+  @keyframes pop{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .msg .av{width:40px;height:40px;border-radius:50%;flex:none;display:flex;
+    align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px}
+  .av.bot{background:var(--accent)}
+  .av.user{background:var(--user)}
+  .msg .body{flex:1;min-width:0}
+  .msg .line{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+  .msg .who{font-weight:600;color:var(--header);font-size:15px}
+  .badge{background:var(--accent);color:#fff;font-size:10px;font-weight:600;
+    padding:1px 5px;border-radius:4px;letter-spacing:.3px;position:relative;top:-1px}
+  .badge .ck{font-size:9px;margin-right:2px}
+  .msg .ts{color:var(--muted);font-size:12px}
+  .msg .txt{color:var(--text);white-space:pre-wrap;word-wrap:break-word}
+  .msg .txt b{color:var(--header);font-weight:600}
+  .msg .txt code,.mono{font-family:"Consolas",ui-monospace,Menlo,monospace;background:var(--surf2);
+    border-radius:4px;padding:1px 5px;font-size:13px;color:#4a463e}
+  .msg .txt .cmd{background:rgba(201,80,0,.12);color:#A8430A;border-radius:4px;padding:1px 5px;font-size:14px;font-family:inherit}
+  .msg .txt .mention{background:rgba(201,80,0,.16);color:#A8430A;border-radius:4px;padding:0 3px}
+  .eph{color:var(--muted);font-size:12px;margin-top:7px;display:flex;align-items:center;gap:6px}
+  .eph .eye{opacity:.8}
+  .eph a{color:var(--link);text-decoration:none}
+
+  /* embeds */
+  .embed{margin-top:6px;max-width:432px;background:var(--embed);border-radius:6px;
+    border-left:4px solid var(--embed-bar);padding:12px 16px 14px 12px;overflow:hidden}
+  .embed.warn{border-left-color:var(--warn)}
+  .embed.good{border-left-color:var(--green)}
+  .embed.bad{border-left-color:var(--danger)}
+  .embed .etitle{color:var(--link);font-weight:600;font-size:15px;margin-bottom:6px;line-height:1.3}
+  .embed.note-title .etitle{color:var(--header)}
+  .embed .edesc{color:var(--softtext);font-size:14px}
+  .embed .efield{margin-top:10px}
+  .embed .efield .fn{color:var(--header);font-weight:600;font-size:13px;margin-bottom:2px}
+  .embed .efield .fv{color:var(--softtext);font-size:14px;white-space:pre-wrap}
+  .embed .efield .fv a{color:var(--link);text-decoration:none}
+  .embed img.hdr{width:100%;border-radius:4px;margin-top:11px;display:block}
+  .embed .efoot{color:var(--muted);font-size:12px;margin-top:11px}
+  .embed.removed{opacity:.5;filter:grayscale(.5)}
+  .embed.removed .etitle{text-decoration:line-through}
+
+  /* discord components */
+  .comps{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;max-width:480px}
+  .dbtn{background:var(--btn);color:var(--btn-ink);border:none;border-radius:4px;padding:9px 14px;
+    font:600 14px/1 "gg sans","Segoe UI",sans-serif;cursor:pointer;display:flex;align-items:center;gap:7px;transition:.12s}
+  .dbtn:hover{background:var(--btn-hi)}
+  .dbtn.primary{background:var(--accent);color:#fff} .dbtn.primary:hover{background:var(--accent-hi)}
+  .dbtn.danger{background:var(--danger);color:#fff} .dbtn.danger:hover{background:var(--danger-hi)}
+  .dbtn.vote{background:var(--btn);font-size:15px;padding:8px 16px}
+  .dbtn:disabled{opacity:.5;cursor:default}
+  .dbtn:disabled:hover{background:var(--btn)}
+  .dbtn.primary:disabled:hover{background:var(--accent)}
+
+  /* string select */
+  .selwrap{position:relative;max-width:432px;margin-top:10px}
+  .selbox{background:var(--select);border:1px solid var(--hair);border-radius:4px;
+    padding:10px 12px;display:flex;align-items:center;cursor:pointer;color:var(--muted);font-size:14px}
+  .selbox .ph{flex:1} .selbox .chev{transition:.15s}
+  .selwrap.open .chev{transform:rotate(180deg)}
+  .selbox.has{color:var(--text)}
+  .seldrop{position:absolute;left:0;right:0;top:calc(100% + 4px);background:var(--select);
+    border:1px solid var(--hair);border-radius:4px;max-height:260px;overflow-y:auto;z-index:30;display:none;
+    box-shadow:0 8px 22px rgba(28,27,24,.16)}
+  .selwrap.open .seldrop{display:block}
+  .seldrop .opt{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer}
+  .seldrop .opt:hover{background:var(--hover)}
+  .seldrop .opt .ck{width:18px;height:18px;border-radius:4px;border:1px solid var(--hair);flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+  .seldrop .opt.sel .ck{background:var(--accent);border-color:var(--accent)}
+  .seldrop .opt .on{color:var(--text);font-size:14px}
+  .seldrop .opt .oid{color:var(--muted);font-size:12px;font-family:"Consolas",monospace}
+  .seldrop .opt.disabled{opacity:.4;cursor:default}
+  .seldrop::-webkit-scrollbar{width:8px}.seldrop::-webkit-scrollbar-thumb{background:rgba(28,27,24,.18);border-radius:8px}
+
+  /* modal */
+  .backdrop{position:absolute;inset:0;background:rgba(28,27,24,.32);display:none;
+    align-items:center;justify-content:center;z-index:50}
+  .backdrop.show{display:flex}
+  .modal{background:var(--bg-main);border-radius:8px;width:440px;max-width:90%;box-shadow:0 12px 40px rgba(28,27,24,.25);
+    overflow:hidden;animation:mpop .15s ease;border:1px solid var(--line)}
+  @keyframes mpop{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+  .modal .mh{padding:16px 16px 0}.modal .mh h3{margin:0;color:var(--header);font-size:20px;font-weight:700}
+  .modal .mb{padding:16px}
+  .modal label{display:block;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.4px;margin-bottom:8px;text-transform:uppercase}
+  .modal .req{color:var(--danger)}
+  .modal input{width:100%;background:#fff;border:1px solid var(--hair);border-radius:3px;
+    padding:10px 11px;color:var(--text);font:15px "gg sans","Segoe UI",sans-serif;outline:none}
+  .modal input:focus{border-color:var(--accent)}
+  .modal .hint{color:var(--muted);font-size:12px;margin-top:8px}
+  .modal .mf{background:var(--hover);padding:16px;display:flex;justify-content:flex-end;gap:12px;align-items:center}
+  .modal .linklike{background:none;border:none;color:var(--text);font:600 14px "gg sans",sans-serif;cursor:pointer;padding:9px 4px}
+  .modal .linklike:hover{text-decoration:underline}
+
+  /* input bar */
+  .inputwrap{padding:0 16px 20px;position:relative}
+  .palette{position:absolute;left:16px;right:16px;bottom:72px;background:var(--bg-main);
+    border-radius:8px;box-shadow:0 8px 24px rgba(28,27,24,.18);overflow:hidden;display:none;border:1px solid var(--line)}
+  .palette.show{display:block}
+  .palette .ph{padding:8px 14px;color:var(--muted);font-size:12px;font-weight:600;
+    letter-spacing:.4px;border-bottom:1px solid var(--line);text-transform:uppercase}
+  .palette .opt{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer}
+  .palette .opt:hover,.palette .opt.hi{background:var(--hover)}
+  .palette .opt .oicon{width:26px;height:26px;border-radius:5px;background:var(--accent);
+    flex:none;display:flex;align-items:center;justify-content:center;font-size:14px}
+  .palette .opt .oc{color:var(--header);font-weight:600}.palette .opt .od{color:var(--muted);font-size:13px}
+  .inbar{background:var(--bg-input);border-radius:9px;display:flex;align-items:center;padding:0 14px;border:1px solid var(--line)}
+  .inbar .plus{width:24px;height:24px;border-radius:50%;background:#CFC9BB;color:var(--bg-main);
+    flex:none;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;margin-right:12px}
+  #cmd{flex:1;background:none;border:none;outline:none;color:var(--text);
+    font:15px "gg sans","Segoe UI",sans-serif;padding:12px 0}
+  #cmd::placeholder{color:var(--muted)}
+  .inbar .send{color:var(--muted);font-size:13px;padding:6px 4px}
+
+  @media (max-width:640px){.chan{display:none}.app{height:90vh}}
+  @media (max-width:430px){.rail{display:none}.embed,.comps,.palette,.selwrap{max-width:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div>
+      <span class="eyebrow"><span class="prompt">~ $</span> ./play-together --demo</span>
+      <h1>Play-Together Bot</h1>
+      <p class="sub">A live, clickable mock of my Discord bot that finds the games your whole group actually
+        owns. Runs on sample data &mdash; type <span class="mono">/</span> in the message box to explore the commands.</p>
+    </div>
+    <nav class="links">
+      <a class="nav" href="../index.html">&larr; Portfolio</a>
+    </nav>
+  </header>
+<div class="app">
+  <div class="rail">
+    <div class="pill">🎮</div>
+    <div class="sep"></div>
+    <div class="pill" style="background:#3ba55d">PT</div>
+  </div>
+
+  <div class="chan">
+    <div class="srv">Game Night ▾</div>
+    <div class="list">
+      <div class="ch active"><span class="hash">#</span>play-together</div>
+      <div class="ch"><span class="hash">#</span>general</div>
+      <div class="ch"><span class="hash">#</span>clips</div>
+    </div>
+    <div class="me">
+      <div class="av">K</div>
+      <div><div class="nm">kohzuh</div><div class="st">Online</div></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="top">
+      <span class="hash">#</span><span class="nm">play-together</span>
+      <span class="desc">find what we can all play</span>
+      <span class="demo">DEMO · sample data</span>
+    </div>
+    <div class="scroll" id="scroll"></div>
+    <div class="inputwrap">
+      <div class="palette" id="palette"></div>
+      <div class="inbar">
+        <span class="plus">+</span>
+        <input id="cmd" autocomplete="off" placeholder="Message #play-together  —  type / to see commands" />
+        <span class="send">↵</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Steam input modal -->
+  <div class="backdrop" id="backdrop">
+    <div class="modal">
+      <div class="mh"><h3>Enter Steam username or SteamID64</h3></div>
+      <div class="mb">
+        <label>Steam username or SteamID64 <span class="req">*</span></label>
+        <input id="steamInput" maxlength="50" placeholder="kohzuh   or   7656119…" />
+        <div class="hint">Demo: try a name like <b>kohzuh</b> (shows the account picker) or paste the sample SteamID64 <span class="mono">76561198148289427</span>.</div>
+      </div>
+      <div class="mf">
+        <button class="linklike" id="modalCancel">Cancel</button>
+        <button class="dbtn primary" id="modalSubmit">Submit</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+(() => {
+  // ====== SAMPLE DATA (swap-in block) =======================================
+  // GAMES: appid -> { n: name, mp: is-multiplayer (Steam store category), desc, real }
+  // ME / FRIENDS reference these appids. To use a real library later, replace
+  // ME.lib with the real appid list and extend GAMES as needed.
+  const OWNER = { steamid:"76561198148289427", name:"kohzuh" };
+
+  const GAMES = {
+    553850:{n:"HELLDIVERS™ 2",        mp:1, real:1, desc:"Spread managed democracy across the galaxy in chaotic 4-player co-op."},
+    730:   {n:"Counter-Strike 2",     mp:1, desc:"The premier competitive 5v5 tactical shooter."},
+    548430:{n:"Deep Rock Galactic",   mp:1, desc:"Rock and Stone! 1–4 player co-op mining FPS with destructible caves."},
+    892970:{n:"Valheim",              mp:1, desc:"Brutal co-op Viking survival in a procedural purgatory."},
+    413150:{n:"Stardew Valley",       mp:1, desc:"Build your farm — now with up to 4-player co-op."},
+    1966720:{n:"Lethal Company",      mp:1, desc:"Co-op horror about scavenging abandoned moons to hit the quota."},
+    739630:{n:"Phasmophobia",         mp:1, desc:"4-player co-op psychological horror ghost hunting."},
+    252950:{n:"Rocket League",        mp:1, desc:"Soccer, but with rocket-powered cars."},
+    632360:{n:"Risk of Rain 2",       mp:1, desc:"Up to 4-player co-op roguelike third-person shooter."},
+    105600:{n:"Terraria",             mp:1, desc:"Dig, build, and fight across an 8-player co-op sandbox."},
+    945360:{n:"Among Us",             mp:1, desc:"Social deduction for 4–15 players. Find the impostor."},
+    4000:  {n:"Garry's Mod",          mp:1, desc:"A physics sandbox — do whatever you want, together."},
+    322330:{n:"Don't Starve Together",mp:1, desc:"Multiplayer wilderness survival, uncompromising."},
+    620:   {n:"Portal 2",             mp:1, desc:"Mind-bending two-player co-op puzzle chambers."},
+    271590:{n:"Grand Theft Auto V",   mp:1, desc:"Online heists and mayhem across Los Santos."},
+    728880:{n:"Overcooked! 2",        mp:1, desc:"Chaotic co-op kitchen chaos for up to 4 chefs."},
+    // owned but NOT multiplayer — filtered out of results:
+    4704690:{n:"MECCHA CHAMELEON",    mp:0, real:1},
+    1338430:{n:"Isolation Simulator", mp:0, real:1},
+    1145360:{n:"Hades",               mp:0},
+    367520: {n:"Hollow Knight",       mp:0},
+    632470: {n:"Disco Elysium",       mp:0},
+    1091500:{n:"Cyberpunk 2077",      mp:0},
+    292030: {n:"The Witcher 3: Wild Hunt", mp:0},
+  };
+
+  // kohzuh's (sample) library — includes the 3 real recent titles from the profile
+  const ME = [553850,4704690,1338430,730,548430,892970,413150,1966720,739630,252950,
+              632360,105600,945360,4000,322330,620,271590,1145360,367520,632470];
+
+  // anonymized friends (aliases, not real people). First several are curated for
+  // good overlaps; the rest are generated to demonstrate the paged picker.
+  const CURATED = [
+    {h:"pixelpunk",  lib:[553850,548430,1966720,739630,632360,945360,730,271590,1145360]},
+    {h:"gg_danny",   lib:[548430,892970,413150,1966720,728880,105600,945360,322330,632470]},
+    {h:"void_runner",lib:[553850,548430,892970,1966720,739630,632360,945360,105600,367520,4000]},
+    {h:"frostbyte",  lib:[892970,413150,728880,322330,105600,1091500,945360]},
+    {h:"nightowl",   lib:[553850,548430,1966720,739630,632360,4000,271590,1145360,945360]},
+    {h:"late_lan",   lib:[730,553850,252950,620,292030]},
+    {h:"ghosted",    private:true},
+    {h:"afk_andy",   lib:[]},
+  ];
+  const EXTRA_HANDLES = ["queso","raptor_jpg","biscuit","sundae","lowpoly","gigglebyte",
+    "ctrl_alt_del","mellowmac","dpad_dee","392smoke","pog_champ","kbm_kev","sleepyt",
+    "no_scope","blue_shell","tilt_proof","crouch_spam","gigachad_g","wandering"];
+
+  // deterministic pseudo-random subset for generated friends
+  function seed(str){let h=1779033703;for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),3432918353);h=h<<13|h>>>19;}return ()=>{h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);return((h^=h>>>16)>>>0)/4294967296;};}
+  const APP_POOL = Object.keys(GAMES).map(Number);
+  const FRIENDS = [];
+  let sidBase = 76561198100000000;
+  CURATED.forEach((f,i)=>FRIENDS.push({
+    steamid:String(sidBase + i*731 + 13), name:f.h,
+    lib:f.private?null:f.lib, private:!!f.private
+  }));
+  EXTRA_HANDLES.forEach((h,i)=>{
+    const r=seed(h); const n=4+Math.floor(r()*8);
+    const pool=[...APP_POOL].sort(()=>r()-0.5).slice(0,n);
+    FRIENDS.push({steamid:String(sidBase + (i+50)*617 + 7), name:h, lib:pool, private:false});
+  });
+
+  const MAX=5, PER_PAGE=25;
+  // ==========================================================================
+
+  const scroll=document.getElementById('scroll');
+  const input=document.getElementById('cmd');
+  const palette=document.getElementById('palette');
+  const backdrop=document.getElementById('backdrop');
+  const steamInput=document.getElementById('steamInput');
+
+  const now=()=>{const d=new Date();let h=d.getHours(),m=d.getMinutes();const ap=h>=12?'PM':'AM';h=h%12||12;return `Today at ${h}:${String(m).padStart(2,'0')} ${ap}`;};
+  const down=()=>{scroll.scrollTop=scroll.scrollHeight;};
+  const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const node=h=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild;};
+  const pretty=a=>a.length<=1?(a[0]||''):a.slice(0,-1).join(', ')+' & '+a[a.length-1];
+
+  function userMsg(html){
+    scroll.appendChild(node(`<div class="msg"><div class="av user">K</div><div class="body">
+      <div class="line"><span class="who">kohzuh</span><span class="ts">${now()}</span></div>
+      <div class="txt">${html}</div></div>`));down();
+  }
+  function botMsg(buildInner,{ephemeral=false}={}){
+    const el=node(`<div class="msg"><div class="av bot">🎮</div><div class="body">
+      <div class="line"><span class="who">PlayTogether</span>
+        <span class="badge"><span class="ck">✓</span>APP</span><span class="ts">${now()}</span></div>
+      <div class="bcontent"></div></div></div>`);
+    const c=el.querySelector('.bcontent');
+    if(typeof buildInner==='string') c.innerHTML=buildInner; else c.appendChild(buildInner);
+    if(ephemeral) c.appendChild(node(`<div class="eph"><span class="eye">👁</span>Only you can see this · <a>Dismiss message</a></div>`));
+    scroll.appendChild(el);down();return el;
+  }
+
+  // ---- multiplayer intersection (mirrors the bot) --------------------------
+  function commonMultiplayer(steamLibs){
+    // steamLibs: array of arrays of appids (owner + friends), only visible libs
+    const visible=steamLibs.filter(l=>Array.isArray(l)&&l.length);
+    if(visible.length<2) return [];
+    let common=new Set(visible[0]);
+    for(let i=1;i<visible.length;i++){const s=new Set(visible[i]);common=new Set([...common].filter(x=>s.has(x)));}
+    return [...common].filter(id=>GAMES[id]&&GAMES[id].mp)
+      .sort((a,b)=>GAMES[a].n.toLowerCase().localeCompare(GAMES[b].n.toLowerCase()));
+  }
+
+  // ====== /compare and /roulette: modal -> resolve -> picker ================
+  let pendingMode=null;
+  function openModal(mode){pendingMode=mode;steamInput.value='';backdrop.classList.add('show');setTimeout(()=>steamInput.focus(),30);}
+  function closeModal(){backdrop.classList.remove('show');}
+  document.getElementById('modalCancel').onclick=closeModal;
+  document.getElementById('modalSubmit').onclick=submitModal;
+  steamInput.addEventListener('keydown',e=>{if(e.key==='Enter')submitModal();if(e.key==='Escape')closeModal();});
+
+  function submitModal(){
+    const raw=steamInput.value.trim();
+    if(!raw) return;
+    closeModal();
+    const mode=pendingMode;
+    if(/^\d{17,20}$/.test(raw)){ startPicker(mode, OWNER.name); return; }
+    // username -> simulate multi-result community search
+    showSearchResults(mode, raw);
+  }
+
+  function showSearchResults(mode, query){
+    // mirrors SearchResultPickerView: shows up to 3 candidates, you pick one
+    const cands=[
+      {steamid:OWNER.steamid, name:OWNER.name,            label:`id/${OWNER.name}`},
+      {steamid:"76561198020000051", name:query+"_",       label:`id/${query}_`},
+      {steamid:"76561198330114882", name:query.toUpperCase(), label:`profiles/76561198330114882`},
+    ];
+    const wrap=node(`<div></div>`);
+    wrap.appendChild(node(`<div class="msg-inline"></div>`));
+    botMsg((()=>{
+      const c=document.createElement('div');
+      c.innerHTML=`<div class="txt">I found multiple Steam users for <b>${esc(query)}</b>.\nPick the correct account from the dropdown below:\n`+
+        cands.map((r,i)=>`${i+1}. <code>${r.steamid}</code> — <code>${r.label}</code>`).join('\n')+`</div>`;
+      // string select of results
+      const sel=buildSimpleSelect("Pick the correct Steam account", cands.map(r=>({value:r.steamid,label:r.name,desc:r.steamid})),
+        v=>{ const chosen=cands.find(x=>x.steamid===v); startPicker(mode, chosen?chosen.name:OWNER.name); });
+      c.appendChild(sel);
+      return c;
+    })(), {ephemeral:true});
+  }
+
+  // single-choice select used by the search-result picker
+  function buildSimpleSelect(placeholder, opts, onPick){
+    const w=node(`<div class="selwrap"><div class="selbox"><span class="ph">${placeholder}</span><span class="chev">▾</span></div>
+      <div class="seldrop"></div></div>`);
+    const drop=w.querySelector('.seldrop');
+    opts.forEach(o=>{const row=node(`<div class="opt"><span class="on">${esc(o.label)}</span>
+      <span class="oid" style="margin-left:auto">${esc(o.desc||'')}</span></div>`);
+      row.onclick=()=>{w.classList.remove('open');onPick(o.value);};drop.appendChild(row);});
+    w.querySelector('.selbox').onclick=()=>w.classList.toggle('open');
+    return w;
+  }
+
+  // ---- friend picker (paged dropdown + Prev/Next/Run/Clear) ----------------
+  function startPicker(mode, ownerName){
+    const state={mode,ownerName,page:0,selected:new Set(),el:null,open:false};
+    const el=botMsg(renderPicker(state),{ephemeral:true});
+    state.el=el.querySelector('.bcontent');
+    bindPicker(state);
+  }
+  function renderPicker(state){
+    const selNames=FRIENDS.filter(f=>state.selected.has(f.steamid)).map(f=>f.name);
+    const pages=Math.max(1,Math.ceil(FRIENDS.length/PER_PAGE));
+    const action=state.mode==='compare'?'Compare multiplayer common games':'Start roulette';
+    let header=`<div class="txt">Steam owner: <b>${esc(state.ownerName)}</b> (<code>${OWNER.steamid}</code>)\n`+
+      `Friends found: <b>${FRIENDS.length}</b>\n`+
+      `Page <b>${state.page+1}/${pages}</b>\n`+
+      `Selected friends: <b>${state.selected.size} / ${MAX}</b>`;
+    if(selNames.length){header+=`\nCurrent selection:\n`+selNames.slice(0,10).map(n=>`- ${esc(n)}`).join('\n');}
+    header+=`\n\nPick up to ${MAX} friends, then click <b>${action}</b>.`;
+    if(state.mode==='roulette') header+=`\nRoulette posts the game publicly in this channel; this picker stays private.`;
+    header+=`</div>`;
+
+    const start=state.page*PER_PAGE, pageFriends=FRIENDS.slice(start,start+PER_PAGE);
+    const opts=pageFriends.map(f=>{
+      const sel=state.selected.has(f.steamid);
+      const cap=!sel&&state.selected.size>=MAX;
+      return `<div class="opt${sel?' sel':''}${cap?' disabled':''}" data-sid="${f.steamid}">
+        <span class="ck">${sel?'✓':''}</span>
+        <span class="on">${esc(f.name)}${f.private?' 🔒':''}</span>
+        <span class="oid" style="margin-left:auto">${f.steamid}</span></div>`;
+    }).join('');
+
+    return `${header}
+      <div class="selwrap${state.open?' open':''}">
+        <div class="selbox${state.selected.size?' has':''}" data-act="toggle">
+          <span class="ph">${state.selected.size?state.selected.size+' selected':'Choose friends to compare with'}</span>
+          <span class="chev">▾</span>
+        </div>
+        <div class="seldrop">${opts}</div>
+      </div>
+      <div class="comps">
+        <button class="dbtn" data-act="prev" ${state.page===0?'disabled':''}>Previous</button>
+        <button class="dbtn" data-act="next" ${state.page>=pages-1?'disabled':''}>Next</button>
+        <button class="dbtn primary" data-act="run" ${state.selected.size===0?'disabled':''}>${action}</button>
+        <button class="dbtn danger" data-act="clear">Clear selection</button>
+      </div>`;
+  }
+  function bindPicker(state){
+    const c=state.el;
+    c.querySelector('[data-act="toggle"]').onclick=()=>{state.open=!state.open;rerender(state);};
+    c.querySelectorAll('.seldrop .opt').forEach(o=>o.onclick=()=>{
+      if(o.classList.contains('disabled'))return;
+      const sid=o.dataset.sid;
+      if(state.selected.has(sid))state.selected.delete(sid);
+      else{if(state.selected.size>=MAX)return;state.selected.add(sid);}
+      rerender(state);
+    });
+    c.querySelectorAll('.comps .dbtn').forEach(b=>b.onclick=()=>{
+      const a=b.dataset.act, pages=Math.max(1,Math.ceil(FRIENDS.length/PER_PAGE));
+      if(a==='prev'&&state.page>0)state.page--;
+      else if(a==='next'&&state.page<pages-1)state.page++;
+      else if(a==='clear'){state.selected.clear();}
+      else if(a==='run'){runPicker(state);return;}
+      state.open=(a==='prev'||a==='next')?state.open:false;
+      rerender(state);
+    });
+  }
+  function rerender(state){state.el.innerHTML=renderPicker(state);
+    state.el.appendChild(node(`<div class="eph"><span class="eye">👁</span>Only you can see this · <a>Dismiss message</a></div>`));
+    bindPicker(state);down();}
+
+  function runPicker(state){
+    const chosen=FRIENDS.filter(f=>state.selected.has(f.steamid));
+    const libs=[ME,...chosen.map(f=>f.lib)];
+    const unavailable=chosen.filter(f=>f.private||!f.lib||f.lib.length===0).map(f=>f.name);
+    const games=commonMultiplayer(libs);
+    if(state.mode==='compare') compareResult(state.ownerName,chosen,unavailable,games);
+    else rouletteResult(state.ownerName,chosen,unavailable,games);
+  }
+
+  function compareResult(owner,chosen,unavailable,games){
+    let t=`Compared owner <b>${esc(owner)}</b> with:\n`+chosen.map(f=>`- ${esc(f.name)}`).join('\n');
+    if(unavailable.length){t+=`\n\nLibraries unavailable or empty/private:\n`+unavailable.map(n=>`- ${esc(n)}`).join('\n');}
+    t+=`\n\nCommon multiplayer games: <b>${games.length}</b>\n`;
+    t+= games.length ? games.slice(0,100).map(id=>`- ${esc(GAMES[id].n)}`).join('\n')
+                     : `No common multiplayer games found among users with visible libraries.`;
+    botMsg(`<div class="txt">${t}</div>`,{ephemeral:true});
+  }
+
+  // ---- roulette: vote one candidate at a time, reroll on 👎 ----------------
+  function rouletteResult(owner,chosen,unavailable,games){
+    if(unavailable.length)
+      botMsg(`<div class="txt">Some selected libraries were unavailable or empty/private:\n`+
+        unavailable.map(n=>`- ${esc(n)}`).join('\n')+`</div>`,{ephemeral:true});
+    if(!games.length){
+      botMsg(`<div class="txt">I couldn't find any shared multiplayer games for roulette among the selected visible libraries.</div>`,{ephemeral:true});
+      return;
+    }
+    const participants=[owner,...chosen.map(f=>f.name)];
+    const threshold=Math.floor(participants.length/2)+1;
+    botMsg(`<div class="txt">Roulette is live. I found <b>${games.length}</b> shared multiplayer games and posted the first candidate publicly in this channel.</div>`,{ephemeral:true});
+    const queue=[...games].sort(()=>Math.random()-0.5);
+    postCandidate(queue, games.length, participants, threshold, 0, []);
+  }
+  function postCandidate(queue, total, participants, threshold, doneCount, struckEls){
+    if(!queue.length){
+      botMsg(`<div class="txt">❌ The group voted down every shared multiplayer game I could find.</div>`);
+      return;
+    }
+    const id=queue.shift(); const g=GAMES[id]; const round=total-queue.length;
+    const hdr=`https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/header.jpg`;
+    const store=`https://store.steampowered.com/app/${id}/`;
+    const inner=node(`<div>
+      <div class="txt">Steam roulette spun up a candidate. React below to keep it or reroll it.</div>
+      <div class="embed">
+        <div class="etitle">🎲 Roulette Pick: ${esc(g.n)}</div>
+        <div class="edesc">${esc(g.desc||'No description was provided by Steam.')}</div>
+        <div class="efield"><div class="fn">Store page</div><div class="fv"><a href="${store}" target="_blank" rel="noopener">${store}</a></div></div>
+        <div class="efield"><div class="fn">Players</div><div class="fv">${participants.slice(0,10).map(p=>'- '+esc(p)).join('\n')}</div></div>
+        <div class="efield"><div class="fn">Vote rule</div><div class="fv">More than half must agree: <b>${threshold}+</b> 👍 or 👎</div></div>
+        <img class="hdr" src="${hdr}" alt="" onerror="this.style.display='none'">
+        <div class="efoot">Round ${round} of up to ${total} shared multiplayer games</div>
+      </div>
+      <div class="comps">
+        <button class="dbtn vote" data-v="up">👍 <span class="cnt">0</span></button>
+        <button class="dbtn vote" data-v="down">👎 <span class="cnt">0</span></button>
+      </div>
+    </div>`);
+    const el=botMsg(inner);
+    const embed=el.querySelector('.embed');
+    const comps=el.querySelector('.comps');
+    comps.querySelector('[data-v="up"]').onclick=()=>{
+      comps.remove();
+      botMsg(`<div class="txt">✅ The group locked in <b>${esc(g.n)}</b>. Have fun!</div>`);
+    };
+    comps.querySelector('[data-v="down"]').onclick=()=>{
+      comps.remove(); embed.classList.add('removed');
+      embed.querySelector('.efoot').textContent=`Rerolled — voted down by the group`;
+      postCandidate(queue, total, participants, threshold, doneCount+1, struckEls);
+    };
+  }
+
+  // ====== welcome + command palette =========================================
+  function welcome(){
+    botMsg(`<div class="embed note-title good">
+      <div class="etitle">🎮 PlayTogether is ready</div>
+      <div class="edesc">I find the multiplayer games you and your friends <b>all</b> own on Steam, then help you pick one.</div>
+      <div class="efield"><div class="fn">/compare</div><div class="fv">Enter your SteamID64 or Steam username → pick up to 5 friends → see the multiplayer games you all own.</div></div>
+      <div class="efield"><div class="fn">/roulette</div><div class="fv">Same setup, then the group votes 👍/👎 on random shared games until one wins.</div></div>
+      <div class="efoot">Demo mode — sample friends &amp; libraries, no real Steam calls. Type <b>/</b> below to start.</div>
+    </div>`);
+  }
+  const CMDS=[
+    {name:'/compare', desc:'Choose Steam friends and find common multiplayer games.', run:()=>openModal('compare')},
+    {name:'/roulette',desc:'Choose Steam friends, then publicly vote on a random shared multiplayer game.', run:()=>openModal('roulette')},
+  ];
+  let hi=0;
+  function renderPalette(q){
+    const matches=CMDS.filter(c=>c.name.startsWith(q.toLowerCase()));
+    if(!q.startsWith('/')||!matches.length){palette.classList.remove('show');return;}
+    hi=Math.min(hi,matches.length-1);
+    palette.innerHTML='<div class="ph">Commands</div>'+matches.map((c,i)=>
+      `<div class="opt${i===hi?' hi':''}" data-cmd="${c.name}"><span class="oicon">🎮</span>
+       <span><span class="oc">${c.name}</span> &nbsp;<span class="od">${c.desc}</span></span></div>`).join('');
+    palette.classList.add('show');
+    palette.querySelectorAll('.opt').forEach(o=>o.onclick=()=>fire(o.dataset.cmd));
+    palette._m=matches;
+  }
+  function fire(name){palette.classList.remove('show');input.value='';hi=0;userMsg(`<span class="cmd">${name}</span>`);const c=CMDS.find(c=>c.name===name);if(c)c.run();}
+  input.addEventListener('input',()=>renderPalette(input.value.trim()));
+  input.addEventListener('focus',()=>renderPalette(input.value.trim()));
+  input.addEventListener('keydown',e=>{
+    const open=palette.classList.contains('show'),m=palette._m||[];
+    if(open&&(e.key==='ArrowDown'||e.key==='ArrowUp')){e.preventDefault();hi=(hi+(e.key==='ArrowDown'?1:m.length-1))%m.length;renderPalette(input.value.trim());}
+    else if(e.key==='Enter'){e.preventDefault();const q=input.value.trim().toLowerCase();
+      if(open&&m[hi])fire(m[hi].name);
+      else{const c=CMDS.find(c=>c.name===q);if(c)fire(c.name);else if(q){input.value='';userMsg(esc(q));}}}
+    else if(e.key==='Escape')palette.classList.remove('show');
+  });
+  document.addEventListener('click',e=>{if(!e.target.closest('.inputwrap'))palette.classList.remove('show');});
+
+  welcome();
+  input.focus();
+})();
+</script>
+</body>
+</html>

@@ -295,10 +295,56 @@
     transition: color 0.12s, border-color 0.12s, background 0.12s;
   }
   #scn-giveup:hover { color: #ff8a98; border-color: #8a4a55; background: rgba(255,90,110,0.08); }
+
+  /* compile-style chrome — a minimal floating escape hatch, tuned for the dark
+     desk so it reads without breaking the fullscreen game */
+  .compile-chrome {
+    position: fixed;
+    top: 14px;
+    left: 16px;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace;
+    pointer-events: none;
+  }
+  .compile-chrome .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #F2622E;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  }
+  .compile-chrome .eyebrow .prompt { color: rgba(255,255,255,0.5); }
+  .compile-chrome a.nav {
+    pointer-events: auto;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.82);
+    text-decoration: none;
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: rgba(20,18,15,0.5);
+    backdrop-filter: blur(3px);
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  .compile-chrome a.nav:hover {
+    color: #fff;
+    border-color: #F2622E;
+    background: rgba(201,80,0,0.35);
+  }
   #scn-giveup:disabled { opacity: 0.35; cursor: default; }
 </style>
 </head>
 <body oncontextmenu="return false">
+  <div class="compile-chrome">
+    <span class="eyebrow"><span class="prompt">~ $</span> ./invoice-rush</span>
+    <a class="nav" href="../index.html">&larr; Portfolio</a>
+  </div>
+
   <div id="stage">
     <div id="stack">
       <div class="underpage" style="transform: translate(-50%,-50%) rotate(-2.2deg) translate(-6px,5px);"></div>

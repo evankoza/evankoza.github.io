@@ -303,8 +303,17 @@
     overflow: hidden;
     border: 1px solid var(--line);
     background: var(--bg);
+    cursor: pointer;
   }
+  .thumb.selected { border-color: var(--pumpkin); box-shadow: 0 0 0 2px var(--pumpkin); }
   .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* per-frame adjust strip */
+  .frame-adjust { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .frame-adjust .adjust-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    font-size: 11.5px; font-weight: 600; color: var(--ink-muted); margin-bottom: 4px;
+  }
+  .frame-adjust .adjust-head .which { color: var(--pumpkin); }
   .thumb .x {
     position: absolute; top: 2px; right: 2px;
     width: 18px; height: 18px; border-radius: 50%;
@@ -380,6 +389,33 @@
         </div>
       </section>
 
+      <!-- LOOP / OUTRO + GIF EXPORT ----------------------------- -->
+      <section class="panel" id="panel-loop">
+        <h2><span class="caret">▾</span> Loop &amp; GIF</h2>
+        <div class="panel-body">
+          <label class="mir" style="font-size:13px; color:var(--ink); margin-top:2px">
+            <input type="checkbox" id="loop-toggle" /> Loop in &amp; out (outro)
+          </label>
+          <p class="hint" style="margin-top:8px">
+            Plays the intro, holds, then runs it in reverse — the curves spin out,
+            the portrait zooms back up — holds, and loops. Each restart sends the
+            Lissajous curves spinning in again.
+          </p>
+          <div id="loop-sliders"></div>
+          <hr style="border:none; border-top:1px solid var(--line); margin:14px 0" />
+          <p class="hint" style="margin-top:0">
+            Record the live stage to an animated GIF. Turn on <em>Loop in &amp; out</em>
+            and set the length to one full cycle for a seamless loop. The encoder is
+            fetched once from a CDN — your images never leave the browser.
+          </p>
+          <div id="gif-sliders"></div>
+          <div class="btnrow" style="align-items:center">
+            <button class="btn primary sm" id="gif-record">● Record GIF</button>
+            <span id="gif-status" class="hint" style="margin:0"></span>
+          </div>
+        </div>
+      </section>
+
       <!-- IMAGES (portrait frames) ------------------------------ -->
       <section class="panel" id="panel-images">
         <h2><span class="caret">▾</span> Portrait images <span class="count" id="frame-count"></span></h2>
@@ -387,7 +423,8 @@
           <p class="hint">
             The ASCII portrait spins through these frames. Defaults to my head-spin set —
             add your own and remove any. (Several similar shots from different angles read as a
-            spinning head; a single image just pulses in place.)
+            spinning head; a single image just pulses in place.) Click a frame to park the
+            spin on it and fine-tune that image's framing.
           </p>
           <div class="thumbs" id="frame-thumbs"></div>
           <div class="btnrow">
@@ -395,6 +432,21 @@
             <input type="file" id="frame-file" accept="image/*" multiple />
             <button class="btn sm" id="reset-frames">Reset to mine</button>
             <button class="btn sm" id="clear-frames">Remove all</button>
+          </div>
+          <!-- per-frame adjust (shown when a frame is selected) -->
+          <div class="frame-adjust" id="frame-adjust" hidden>
+            <div class="adjust-head">
+              <span>Adjusting <span class="which" id="frame-adjust-which"></span></span>
+              <span>spin parked</span>
+            </div>
+            <div class="row">
+              <span class="lbl">vertical</span>
+              <input type="range" id="frame-oy" min="-0.2" max="0.2" step="0.005" />
+              <span class="val" id="frame-oy-val"></span>
+            </div>
+            <div class="btnrow">
+              <button class="btn sm" id="frame-resume">Resume spin</button>
+            </div>
           </div>
         </div>
       </section>
@@ -453,6 +505,9 @@
       pCrop: 0.62, pChar: 11, pCharStart: 46, pCharSpeed: 34,
       pSpin: 700, pCut: 154, pGamma: 1.0, pScanMin: 3, pScanMax: 8,
       pSize: 540, pEye: -48,
+      // loop / outro + gif export
+      loop: false, loopTurns: 0.5, loopHold: 1.4,
+      gifDur: 4, gifFps: 15, gifW: 480,
     };
     const SAMPLES = 700, PAD = 0.16, PHASE_SCALE = Math.PI;
     const STROKE_REF_W = 275, GLITCH_SPD = 2.0, GLITCH_STRIP = 3;
@@ -460,6 +515,8 @@
     // a clean spin needs the phase displaced by a WHOLE multiple of 2π (per the
     // hero engine) so the figure returns to the exact point it started.
     const spinTurns = (a) => Math.max(1, Math.round(a * cfg.spinTurns));
+    // how far (in whole turns) each curve spins during a loop in/out leg
+    const loopTurns = (a) => Math.max(1, Math.round(a * cfg.loopTurns));
 
     // ── default curve set: the EVAN letters ────────────────────────────────
     const PUMPKIN = "#C95000";
@@ -658,7 +715,8 @@
     // frames: { img, oy, src } — `src` kept so we can rebuild thumbnails
     let frames = [];
     let pIdx = 0, pLastSwitch = 0, pSpinning = true, pScan = 4;
-    let pCharEff = null, pCharIntroT0 = 0;
+    let pSelected = -1;   // frame parked for per-frame tuning (-1 = spinning freely)
+    let pCharEff = null, pCharIntroT0 = 0, pCharDir = 1; // 1 intro (shrink) · -1 outro (grow) · 0 held big
 
     function loadDefaultFrames() {
       frames = DEFAULT_FRAMES.map((p) => {
@@ -738,9 +796,44 @@
       }
     }
 
-    function restartCharIntro() {
-      pCharEff = (cfg.pCharStart > cfg.pChar && cfg.pCharSpeed > 0) ? cfg.pCharStart : null;
+    const charAnimates = () => cfg.pCharStart > cfg.pChar && cfg.pCharSpeed > 0;
+    function restartCharIntro() {   // chars zoom from big → resting size
+      pCharDir = 1;
+      pCharEff = charAnimates() ? cfg.pCharStart : null;
       pCharIntroT0 = 0;
+    }
+    function startCharOutro() {      // the reverse: chars zoom resting → big
+      if (!charAnimates()) return;
+      pCharDir = -1;
+      pCharEff = cfg.pChar;
+      pCharIntroT0 = 0;
+    }
+
+    // ── loop / outro state machine ──────────────────────────────────────────
+    // When cfg.loop is on the composition plays forever: settle in (intro),
+    // hold, then run the same motion in reverse (the outro — curves spin out,
+    // chars zoom back up), hold, and repeat. The easing in step() just chases
+    // whatever target loopState points at, so "out" is literally the intro
+    // backwards. Each restart sends the curves spinning again.
+    let loopState = "in";            // in · holdIn · out · holdOut
+    let loopT0 = 0;                  // ms a hold began
+    const loopAway = (s) => s.goal - 2 * Math.PI * loopTurns(s.cfg.a);
+    function loopTargetFor(s) {
+      return (loopState === "out" || loopState === "holdOut") ? loopAway(s) : s.goal;
+    }
+    function loopAllArrived() {
+      return state.every((s) => Math.abs(loopTargetFor(s) - s.phase) < 0.02);
+    }
+    function advanceLoop(now) {
+      if (loopState === "in") {
+        if (loopAllArrived()) { loopState = "holdIn"; loopT0 = now; }
+      } else if (loopState === "holdIn") {
+        if (now - loopT0 >= cfg.loopHold * 1000) { loopState = "out"; startCharOutro(); }
+      } else if (loopState === "out") {
+        if (loopAllArrived()) { loopState = "holdOut"; loopT0 = now; }
+      } else if (loopState === "holdOut") {
+        if (now - loopT0 >= cfg.loopHold * 1000) { loopState = "in"; restartCharIntro(); }
+      }
     }
 
     // ── the animation loop ──────────────────────────────────────────────────
@@ -751,22 +844,33 @@
       const now = ms || performance.now();
       const wt = (now / 1000) * cfg.wobbleSpd;
       for (const s of state) {
-        const rem = s.goal - s.phase;
+        const tgt = cfg.loop ? loopTargetFor(s) : s.goal;
+        const rem = tgt - s.phase;
         let d = rem * cfg.ease + Math.sign(rem) * 0.018 * spinTurns(s.cfg.a);
         if (Math.abs(d) > Math.abs(rem)) d = rem;
         s.phase += d;
         const wob = cfg.wobbleAmp * s.cfg.a * Math.sin(wt + s.wobOff);
         drawCurve(s, s.phase + wob);
       }
+      if (cfg.loop) advanceLoop(now);
       drawBanner(bannerPixelAt(now), now);
 
       const frame = frames[pIdx];
       if (frame && frame.img.complete && frame.img.naturalWidth) {
         if (pCharEff != null) {
           if (pCharIntroT0 === 0) pCharIntroT0 = now;
-          const v = cfg.pCharStart - cfg.pCharSpeed * ((now - pCharIntroT0) / 1000);
-          if (v <= cfg.pChar) pCharEff = null; else pCharEff = v;
-          renderPortrait();
+          const dt = (now - pCharIntroT0) / 1000;
+          if (pCharDir === 1) {                       // intro: shrink to resting size
+            const v = cfg.pCharStart - cfg.pCharSpeed * dt;
+            pCharEff = (v <= cfg.pChar) ? null : v;
+            renderPortrait();
+          } else if (pCharDir === -1) {               // outro: grow back up, then hold
+            const v = cfg.pChar + cfg.pCharSpeed * dt;
+            if (v >= cfg.pCharStart) { pCharEff = cfg.pCharStart; pCharDir = 0; }
+            else pCharEff = v;
+            renderPortrait();
+          }
+          // pCharDir === 0 → held big between outro and the next intro; nothing to do
         }
         if (pLastSwitch === 0) {
           pLastSwitch = now;
@@ -944,19 +1048,61 @@
       }
       frames.forEach((fr, i) => {
         const t = document.createElement("div");
-        t.className = "thumb";
+        t.className = "thumb" + (i === pSelected ? " selected" : "");
+        t.title = "Click to park the spin and adjust this frame";
         t.innerHTML = `<img src="${fr.src}" alt="frame ${i + 1}" />`;
+        t.addEventListener("click", () => selectFrame(i));
         const x = document.createElement("button");
         x.className = "x"; x.textContent = "×"; x.title = "Remove";
-        x.addEventListener("click", () => {
+        x.addEventListener("click", (e) => {
+          e.stopPropagation();             // don't also select the frame
           frames.splice(i, 1);
           if (pIdx >= frames.length) pIdx = 0;
+          if (pSelected === i) resumeSpin(true);
+          else if (pSelected > i) pSelected--;
           renderPortrait(); renderFrameThumbs();
         });
         t.appendChild(x);
         frameThumbs.appendChild(t);
       });
     }
+
+    // ── per-frame adjust (park the spin on one image, nudge its framing) ──────
+    const frameAdjust = document.getElementById("frame-adjust");
+    const frameAdjustWhich = document.getElementById("frame-adjust-which");
+    const frameOy = document.getElementById("frame-oy");
+    const frameOyVal = document.getElementById("frame-oy-val");
+    function renderFrameAdjust() {
+      const fr = frames[pSelected];
+      if (pSelected < 0 || !fr) { frameAdjust.hidden = true; return; }
+      frameAdjust.hidden = false;
+      frameAdjustWhich.textContent = "image " + (pSelected + 1);
+      frameOy.value = String(fr.oy || 0);
+      frameOyVal.textContent = (fr.oy || 0).toFixed(3);
+    }
+    function selectFrame(i) {
+      pSelected = i;
+      pIdx = i;
+      pSpinning = false;          // park so the chosen frame holds still
+      renderPortrait();
+      renderFrameThumbs();
+      renderFrameAdjust();
+    }
+    function resumeSpin(skipThumbs) {
+      pSelected = -1;
+      pSpinning = true;
+      pLastSwitch = performance.now();
+      frameAdjust.hidden = true;
+      if (!skipThumbs) renderFrameThumbs();
+    }
+    frameOy.addEventListener("input", () => {
+      const fr = frames[pSelected];
+      if (!fr) return;
+      fr.oy = parseFloat(frameOy.value);
+      frameOyVal.textContent = fr.oy.toFixed(3);
+      renderPortrait();
+    });
+    document.getElementById("frame-resume").addEventListener("click", () => resumeSpin());
     document.getElementById("frame-file").addEventListener("change", (e) => {
       const files = Array.from(e.target.files || []);
       let pending = files.length;
@@ -971,10 +1117,10 @@
       e.target.value = "";   // allow re-selecting the same file
     });
     document.getElementById("reset-frames").addEventListener("click", () => {
-      loadDefaultFrames(); renderPortrait(); renderFrameThumbs();
+      resumeSpin(true); loadDefaultFrames(); renderPortrait(); renderFrameThumbs();
     });
     document.getElementById("clear-frames").addEventListener("click", () => {
-      frames = []; pIdx = 0; renderPortrait(); renderFrameThumbs();
+      resumeSpin(true); frames = []; pIdx = 0; renderPortrait(); renderFrameThumbs();
     });
 
     // ── banner manager ───────────────────────────────────────────────────────
@@ -1069,6 +1215,124 @@
     makeSlider(ps, "pCrop", "crop", 0.3, 1, 0.02, (v) => v >= 0.999 ? "full" : v.toFixed(2), { render: true });
     makeSlider(ps, "pSize", "resolution", 300, 1200, 10, px, { relayout: true, render: true });
     makeSlider(ps, "pEye", "eye nudge", -300, 300, 2, px, { relayout: true });
+
+    // ── loop / outro controls ───────────────────────────────────────────────
+    const loopToggle = document.getElementById("loop-toggle");
+    loopToggle.addEventListener("change", () => {
+      cfg.loop = loopToggle.checked;
+      if (cfg.loop) {
+        // kick off a fresh intro: throw the curves out so they spin straight in
+        loopState = "in"; loopT0 = 0;
+        for (const s of state) s.phase = loopAway(s);
+        restartCharIntro();
+        startStep();
+      } else {
+        // release: let the curves settle and the portrait return to resting size
+        pCharDir = 1; pCharEff = null; renderPortrait();
+      }
+    });
+
+    const ls = document.getElementById("loop-sliders");
+    makeSlider(ls, "loopTurns", "rotations", 0.5, 4, 0.5, fix(1));
+    makeSlider(ls, "loopHold", "hold", 0, 4, 0.1, (v) => v.toFixed(1) + "s");
+
+    // ── GIF export ───────────────────────────────────────────────────────────
+    // gif.js is the toy's one runtime dependency, and only when you actually
+    // record: it's fetched from a CDN on first use so the page stays build-free.
+    // Encoding happens entirely in-browser (web workers) — no pixels are uploaded.
+    const gs = document.getElementById("gif-sliders");
+    makeSlider(gs, "gifDur", "length", 1, 10, 0.5, (v) => v.toFixed(1) + "s");
+    makeSlider(gs, "gifFps", "fps", 6, 24, 1, (v) => v | 0);
+    makeSlider(gs, "gifW", "width", 240, 720, 20, px);
+
+    const GIF_CDN = "https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/";
+    const BG_HEX = "#ECEAE3";
+    let gifWorkerURL = null;
+    function loadScript(src) {
+      return new Promise((res, rej) => {
+        const sc = document.createElement("script");
+        sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error("load failed"));
+        document.head.appendChild(sc);
+      });
+    }
+    async function ensureGifLib() {
+      if (!window.GIF) await loadScript(GIF_CDN + "gif.js");
+      if (!gifWorkerURL) {
+        const r = await fetch(GIF_CDN + "gif.worker.js");
+        gifWorkerURL = URL.createObjectURL(new Blob([await r.text()], { type: "application/javascript" }));
+      }
+    }
+
+    // flatten the three stacked, CSS-transformed canvases into one frame by
+    // reading each one's on-screen box relative to the stage. drawImage scales
+    // the full source canvas into that box, so transforms come for free and any
+    // bleed past the stage is clipped by the export canvas bounds — just like
+    // the .stage overflow:hidden does on screen.
+    function compositeStage(octx, scale, stageRect) {
+      octx.fillStyle = BG_HEX;
+      octx.fillRect(0, 0, octx.canvas.width, octx.canvas.height);
+      const put = (cvs) => {
+        if (!cvs || cvs.style.display === "none" || !cvs.width || !cvs.height) return;
+        const r = cvs.getBoundingClientRect();
+        octx.drawImage(cvs,
+          (r.left - stageRect.left) * scale, (r.top - stageRect.top) * scale,
+          r.width * scale, r.height * scale);
+      };
+      put(portraitCanvas);
+      if (!cfg.bannerHidden) put(bannerCanvas);
+      for (const s of state) put(s.canvas);
+    }
+
+    let recording = false;
+    const gifStatus = document.getElementById("gif-status");
+    const gifBtn = document.getElementById("gif-record");
+    gifBtn.addEventListener("click", async () => {
+      if (recording) return;
+      recording = true;
+      const oldTxt = gifBtn.textContent;
+      gifBtn.textContent = "Loading…"; gifBtn.disabled = true; gifStatus.textContent = "";
+      const finish = (msg) => {
+        gifStatus.textContent = msg || "";
+        gifBtn.textContent = oldTxt; gifBtn.disabled = false; recording = false;
+      };
+      try {
+        await ensureGifLib();
+      } catch (_) { finish("couldn't load encoder (offline?)"); return; }
+
+      const stageRect0 = stageEl.getBoundingClientRect();
+      const scale = cfg.gifW / stageRect0.width;
+      const W = Math.round(stageRect0.width * scale);
+      const H = Math.round(stageRect0.height * scale);
+      const out = document.createElement("canvas");
+      out.width = W; out.height = H;
+      const octx = out.getContext("2d");
+
+      const gif = new GIF({ workers: 2, quality: 8, workerScript: gifWorkerURL,
+        width: W, height: H, background: BG_HEX });
+      const fps = cfg.gifFps, delay = Math.round(1000 / fps);
+      const total = Math.max(1, Math.round(cfg.gifDur * fps));
+      let captured = 0;
+
+      gif.on("progress", (p) => { gifStatus.textContent = "encoding " + Math.round(p * 100) + "%"; });
+      gif.on("finished", (blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "compile.gif"; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        finish("saved ✓");
+      });
+
+      startStep();   // make sure the stage is animating while we sample it
+      const grab = () => {
+        compositeStage(octx, scale, stageEl.getBoundingClientRect());
+        gif.addFrame(octx, { copy: true, delay });
+        captured++;
+        gifStatus.textContent = "recording " + captured + "/" + total;
+        if (captured < total) setTimeout(() => requestAnimationFrame(grab), delay);
+        else gif.render();
+      };
+      requestAnimationFrame(grab);
+    });
 
     // ── boot ──────────────────────────────────────────────────────────────────
     loadDefaultFrames();

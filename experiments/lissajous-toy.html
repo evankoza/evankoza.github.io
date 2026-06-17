@@ -7,7 +7,9 @@
 <style>
   :root{
     --bg:#efece4; --card:#f7f5f0; --ink:#26221a; --muted:#857e6e;
-    --line:#dcd7cb; --accent:#2268ff;
+    --line:#dcd7cb; --accent:#C95000; --accent-hi:#F2622E;
+    --ink-faint:rgba(38,34,26,.42);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
   }
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -15,9 +17,22 @@
     font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased}
   .page{max-width:920px;margin:0 auto;padding:28px 20px 60px}
-  .head{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px}
-  h1{font-size:18px;font-weight:600;margin:0;letter-spacing:.2px}
-  .head p{margin:0;color:var(--muted);font-size:13px}
+
+  /* compile-style header — shared chrome across the experiments */
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent)}
+  .eyebrow .prompt{color:var(--ink-faint)}
+  .topbar{display:flex;align-items:flex-start;justify-content:space-between;
+    flex-wrap:wrap;gap:12px;margin-bottom:20px}
+  .topbar h1{font-size:clamp(1.4rem,3vw,2rem);font-weight:800;letter-spacing:-.03em;
+    line-height:1.05;margin:6px 0 0}
+  .topbar .sub{margin:6px 0 0;color:var(--muted);font-size:.92rem;line-height:1.5;max-width:60ch}
+  .topbar .links{display:flex;gap:10px;flex-shrink:0}
+  .topbar a.nav{font-family:var(--mono);font-size:12px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);text-decoration:none;
+    border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--card);
+    white-space:nowrap;transition:color .15s,border-color .15s,background .15s}
+  .topbar a.nav:hover{color:var(--accent);border-color:var(--accent)}
 
   .stage{background:var(--card);border:1px solid var(--line);border-radius:16px;
     padding:18px;margin:14px 0;position:relative}
@@ -31,7 +46,7 @@
   button:disabled{opacity:.4;cursor:default}
   button:disabled:hover{border-color:var(--line);background:#fff}
   button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-  button.primary:hover{background:#3a78ff}
+  button.primary:hover{background:var(--accent-hi)}
 
   .explorer{display:grid;grid-template-columns:300px 1fr;gap:18px;margin-top:18px}
   @media (max-width:720px){.explorer{grid-template-columns:1fr}}
@@ -59,10 +74,18 @@
 </head>
 <body>
 <div class="page">
-  <div class="head">
-    <h1>Lissajous Toy</h1>
-    <p>Add curves, then click one to reshape it</p>
-  </div>
+  <header class="topbar">
+    <div>
+      <span class="eyebrow"><span class="prompt">~ $</span> ./lissajous --play</span>
+      <h1>Lissajous Toy</h1>
+      <p class="sub">Add curves, click one to reshape it, and watch the figures drift. These are the
+        same parametric curves that spell my name on the homepage &mdash; here they&rsquo;re yours to bend.</p>
+    </div>
+    <nav class="links">
+      <a class="nav" href="../index.html">&larr; Portfolio</a>
+      <a class="nav" href="make-your-own.html">Make your own</a>
+    </nav>
+  </header>
 
   <div class="stage">
     <canvas id="big" width="900" height="260"></canvas>
@@ -176,7 +199,7 @@
       if(i===state.sel){
         bctx.beginPath();
         bctx.arc(L.x,L.y,amp*L.scale+12,0,Math.PI*2);
-        bctx.fillStyle="rgba(34,104,255,.07)"; bctx.fill();
+        bctx.fillStyle="rgba(201,80,0,.08)"; bctx.fill();
       }
       strokePath(bctx,pts,L.x,L.y,driftRot,L.color,2);
     }

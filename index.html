@@ -77,9 +77,34 @@
   }
   .eyebrow .prompt { color: var(--ink-faint); }
 
+  /* Visitor invite — matches the trust-bar eyebrow (font + muted ink) but
+     right-aligned and just above the divider; brightens to pumpkin on hover. */
+  /* Scoped to .trust-bar so this beats `.trust-bar .eyebrow { display:block }`
+     — otherwise the arrow stays display:inline and CSS transforms no-op on it. */
+  .trust-bar a.headshot-cta {
+    position: absolute;
+    right: 24px;
+    bottom: 100%;          /* sits just above the trust-bar's top divider */
+    margin-bottom: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--ink-faint);
+    text-decoration: none;
+    transition: color 0.2s ease, gap 0.18s ease;
+  }
+  .headshot-cta .arrow { transition: transform 0.18s ease; }
+  .headshot-cta:hover,
+  .headshot-cta:focus-visible { color: var(--pumpkin); gap: 11px; }
+  .headshot-cta:hover .arrow,
+  .headshot-cta:focus-visible .arrow { transform: translateX(2px); }
+  .headshot-cta:hover .label,
+  .headshot-cta:focus-visible .label { text-decoration: underline; }
+
   /* ── Trust bar (pinned to bottom of hero screen) + punchline ─ */
   .trust-bar {
     flex: 0 0 auto;
+    position: relative;                          /* anchor for the headshot CTA above the divider */
     border-top: 1px solid var(--line);          /* divider between the face and the strip */
     padding: clamp(14px, 1.8vw, 20px) 0 20px;   /* logo row rests ~20px above the fold */
     text-align: center;
@@ -775,6 +800,9 @@
        ~20px above the fold so the animated face keeps the spotlight. Seamless
        marquee (DIGITS trust-ticker pattern) — cloned once by JS for the loop. -->
   <div class="trust-bar">
+    <!-- Visitor invite resting just above the divider, right-aligned and out of
+         document flow so it overlays without pushing the hero face up. -->
+    <a class="headshot-cta eyebrow" href="experiments/make-your-own.html"><span class="label">Make your own headshot</span><span class="arrow" aria-hidden="true">&rarr;</span></a>
     <span class="eyebrow">Trusted by the world&rsquo;s leading companies</span>
     <div class="marquee">
       <div class="marquee-track" id="marquee-track">
@@ -823,7 +851,6 @@
       <div class="carousel" id="carousel">
         <div class="masonry" id="masonry"><!-- tiles injected by JS --></div>
       </div>
-      <p class="carousel-hint">drag&nbsp;·&nbsp;scroll&nbsp;·&nbsp;click a tile &rarr;</p>
     </div>
   </section>
 
@@ -1535,13 +1562,14 @@
         photos: [],
       },
       {
-        label: "Discord Bot",
+        label: "Discord Play-Together Bot",
         title: "Steam Play-Together Bot",
         lead: "A Discord bot that finds the multiplayer games you and your friends actually own in common — then helps you pick one.",
         description: "Enter a SteamID64 or display name and the bot pulls your Steam friends list, lets you pick up to five friends, and compares everyone’s libraries to surface only the titles Steam marks as multiplayer. /compare lists the overlap; /roulette spins through it for you. It handles private libraries and Steam/store API hiccups gracefully.",
         objective: "Kill the “what can we all actually play together?” group-chat stalemate with a single slash command.",
         stack: ["Python", "discord.py", "Steam Web API"],
         links: [
+          { label: "Try the demo", href: "experiments/discord-bot-demo.html" },
           { label: "Add to Discord", href: "https://discord.com/oauth2/authorize?client_id=1480349911651450991" },
           { label: "Source", href: "https://github.com/evankoza/discord-play-together-bot" },
         ],
@@ -1574,7 +1602,7 @@
         photos: [],
       },
       {
-        label: "Make Your Own",
+        label: "Make Your Own Headshot",
         title: "Make Your Own — Compile Studio",
         lead: "The compile-style hero handed to you: drop in your own photos, paste in your own curves, and dial every knob — all in the browser.",
         description: "The visitor-facing version of the portrait tuner. The ASCII portrait defaults to my head-spin frames, but you can upload your own images and remove any; the Lissajous name starts as EVAN but you can add, remove, or paste in whole curve sets; the KOZA banner can be swapped for your own wordmark or hidden. Every magic number from the hero is exposed as a live slider, and nothing leaves your machine — it all runs client-side.",
