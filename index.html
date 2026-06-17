@@ -318,6 +318,23 @@
   .project-t { font-size: 0.92rem; font-weight: 700; margin-bottom: 6px; }
   .project-d { font-size: 0.9rem; color: var(--ink-muted); line-height: 1.55; margin-bottom: 12px; }
   .project .chips .chip { background: var(--bg); }
+  .project-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    color: var(--pumpkin);
+    text-decoration: none;
+    transition: gap 0.18s ease;
+  }
+  .project-cta .arrow { transition: transform 0.18s ease; }
+  .project-cta:hover { gap: 11px; }
+  .project-cta:hover .arrow { transform: translateX(2px); }
+  .project-cta:hover .label { text-decoration: underline; }
 
   /* footer */
   .site-footer {
@@ -860,6 +877,20 @@
 
         <div class="xp">
           <div class="xp-head">
+            <span class="xp-role">Software Developer</span>
+            <span class="xp-when">Apr 2026 &ndash; Present</span>
+          </div>
+          <div class="xp-org">Digits Rehab Inc. &middot; London, ON</div>
+          <ul class="xp-list">
+            <li>Build user-facing features for the rehab platform &mdash; including a <strong>guided progression flow</strong> that walks elderly patients through their exercises one step at a time.</li>
+            <li>Designed and shipped the company&rsquo;s <strong>new landing page</strong>.</li>
+            <li>Kicked off platform <strong>integrations with myLaminin</strong> to connect Digits with their systems.</li>
+            <li>Ship production features fast with <strong>AI-assisted development</strong>, learning new tools and patterns on the job.</li>
+          </ul>
+        </div>
+
+        <div class="xp">
+          <div class="xp-head">
             <span class="xp-role">Part-Time Home Clerk</span>
             <span class="xp-when">Jul 2021 &ndash; Present</span>
           </div>
@@ -879,6 +910,9 @@
               <span class="chip">Python</span><span class="chip">FastAPI</span><span class="chip">OpenCV</span>
               <span class="chip">Barcode scan</span><span class="chip">PDF extraction</span><span class="chip">SQLite</span>
             </div>
+            <a class="project-cta" href="experiments/invoice-game.html">
+              <span class="label">Think you can beat it?</span><span class="arrow" aria-hidden="true">&rarr;</span>
+            </a>
           </div>
         </div>
 
