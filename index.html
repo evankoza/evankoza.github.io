@@ -1150,7 +1150,7 @@
     // portrait size, glyph size, and every absolute offset so the whole
     // face+banner+curves stack shrinks together as one piece.
     const HERO_REF_W = 1100;     // hero width (CSS px) the tuned values assume
-    const SMALL_BOOST   = 0.78;  // exponent <1 on the width ratio: lifts the head
+    const SMALL_BOOST   = 0.75;  // exponent <1 on the width ratio: lifts the head
                                  //   + offsets on small screens so they fill the
                                  //   frame; desktop (ratio 1) is left untouched
     const GLYPH_COARSEN = 0.5;   // 0..1 — how much the glyphs resist shrinking on
@@ -1171,7 +1171,7 @@
     // the curve cells shrink on small screens but PIXEL (block size) is fixed, so
     // letters end up chunkier there. Ease PIXEL down toward CURVE_PIX_FLOOR× on
     // small screens for slightly finer curves; desktop (ratio 1) keeps full PIXEL.
-    const CURVE_PIX_FLOOR = 0.72;
+    const CURVE_PIX_FLOOR = 0.50;
     const curvePixel = () => PIXEL * (CURVE_PIX_FLOOR + (1 - CURVE_PIX_FLOOR) * widthRatio());
     // the EVAN cells / KOZA banner are sized off the hero width, so they shrink
     // linearly with it. groupHold() (>=1 below desktop, =1 at ratio 1) is folded
