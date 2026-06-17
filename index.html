@@ -1913,9 +1913,11 @@
     const objEl = document.getElementById("modal-objective");
     const stackEl = document.getElementById("modal-stack");
     let modalField = null;   // set up in §4
+    let currentProject = null;   // index of the project whose modal is open
 
     function openModal(pi) {
       const proj = PROJECTS[pi % PROJECTS.length];
+      currentProject = pi;
       numEl.textContent = String((pi % PROJECTS.length) + 1).padStart(2, "0");
       titleTextEl.textContent = proj.title;
       leadEl.textContent = proj.lead;
@@ -1971,8 +1973,42 @@
       root.classList.remove("open");
       root.setAttribute("aria-hidden", "true");
       document.body.style.overflow = "";
+      currentProject = null;
       if (modalField) modalField.stop();
     }
+
+    // ── 3a. remember-where-you-were ───────────────────────────────────
+    // Demos open in a new tab and carry a "← Portfolio" link back to
+    // index.html?return=1. When the visitor clicks a demo link we stash
+    // the current scroll position (and which modal is open, if any) so the
+    // return trip can drop them right back where they left off. A normal
+    // visit (no ?return=1) ignores the stash and starts at the top.
+    const RETURN_KEY = "portfolioReturn";
+    document.addEventListener("click", (e) => {
+      const a = e.target.closest("a");
+      if (!a) return;
+      if (!/^experiments\//.test(a.getAttribute("href") || "")) return;
+      try {
+        localStorage.setItem(RETURN_KEY, JSON.stringify({
+          scrollY: window.scrollY,
+          project: root.classList.contains("open") ? currentProject : null,
+        }));
+      } catch (_) { /* private mode / quota — just skip restore */ }
+    });
+    (function maybeRestore() {
+      const params = new URLSearchParams(location.search);
+      if (params.get("return") !== "1") return;
+      // Strip the marker so a refresh or bookmark won't re-trigger a restore.
+      params.delete("return");
+      history.replaceState(null, "",
+        location.pathname + (params.toString() ? "?" + params : "") + location.hash);
+      let state = null;
+      try { state = JSON.parse(localStorage.getItem(RETURN_KEY) || "null"); } catch (_) {}
+      try { localStorage.removeItem(RETURN_KEY); } catch (_) {}
+      if (!state) return;
+      window.scrollTo({ top: state.scrollY || 0, behavior: "instant" });
+      if (state.project != null) openModal(state.project);
+    })();
     masonry.addEventListener("click", (e) => {
       const tile = e.target.closest(".tile");
       if (tile) openModal(parseInt(tile.dataset.project, 10) || 0);
