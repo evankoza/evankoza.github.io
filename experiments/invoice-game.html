@@ -658,11 +658,12 @@
     scnGiveup.disabled = true;      // ...but nothing to give up on until you start
     scnValue.innerHTML =
       '<div class="scn-intro">' +
-        '<b>Goal:</b> the truck arrived short. Each <b class="g">SCAN NEXT</b> (or <b class="g">Space</b>) ' +
-        'reads back one received item by its UPC, article #, or description &mdash; find it on the invoice and ' +
-        '<b class="g">left-drag</b> the pen to check it off.<br><br>' +
-        '<b class="g">Right-drag</b> = magnifier &nbsp;·&nbsp; <b class="g">bottom-right corner</b> = next page.<br><br>' +
-        '<b>' + MISSING_COUNT + ' items never scan</b> &mdash; those didn\'t ship. Spot them before the clock beats you.' +
+        '<b>Goal:</b> the truck arrived short &mdash; your job is to figure out which items actually shipped and which never did. ' +
+        'Each <b class="g">SCAN NEXT</b> reads back one received item by its UPC, article #, or description. ' +
+        'Find it on the invoice and <b class="g">draw on the invoice</b> to note that it shipped.<br><br>' +
+        '<b class="g">Hold right-click</b> to magnify the fine print.<br>' +
+        '<b class="g">Click the corners</b> to switch pages.<br><br>' +
+        '<b>' + MISSING_COUNT + ' items never scan</b> &mdash; those are the ones that didn\'t ship. Catch them before the clock beats you.' +
       '</div>';
     scnCount.textContent = '0 / ' + shippedTotal + ' scanned';
     scnNext.textContent = 'START ▶';
