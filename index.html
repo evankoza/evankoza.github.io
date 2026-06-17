@@ -1147,10 +1147,27 @@
     // (never upscale past the tuned values), and is applied uniformly to the
     // portrait size, glyph size, and every absolute offset so the whole
     // face+banner+curves stack shrinks together as one piece.
-    const HERO_REF_W = 1100;   // hero width (CSS px) the tuned values assume
+    const HERO_REF_W = 1100;     // hero width (CSS px) the tuned values assume
+    const SMALL_BOOST   = 0.82;  // exponent <1 on the width ratio: lifts the head
+                                 //   + offsets on small screens so they fill the
+                                 //   frame; desktop (ratio 1) is left untouched
+    const GLYPH_COARSEN = 0.5;   // 0..1 — how much the glyphs resist shrinking on
+                                 //   small screens. Lower = chunkier / more
+                                 //   "pixely" character grid the smaller the display
     const heroBox = document.querySelector(".hero");
-    const composeScale = () =>
+    const widthRatio = () =>
       Math.min(1, (heroBox ? heroBox.offsetWidth : window.innerWidth) / HERO_REF_W);
+    // portrait size + vertical offsets: gentle falloff so the stack stays a touch
+    // larger on phones instead of leaving white space under the head
+    const composeScale = () => Math.pow(widthRatio(), SMALL_BOOST);
+    // glyph height shrinks slower than the portrait, so the character grid gets
+    // coarser (fewer, bigger cells) as the display gets smaller
+    const glyphScale = () => Math.pow(widthRatio(), SMALL_BOOST * GLYPH_COARSEN);
+    // the curve cells shrink on small screens but PIXEL (block size) is fixed, so
+    // letters end up chunkier there. Ease PIXEL down toward CURVE_PIX_FLOOR× on
+    // small screens for slightly finer curves; desktop (ratio 1) keeps full PIXEL.
+    const CURVE_PIX_FLOOR = 0.72;
+    const curvePixel = () => PIXEL * (CURVE_PIX_FLOOR + (1 - CURVE_PIX_FLOOR) * widthRatio());
 
     const cells = Array.from(document.querySelectorAll(".cell"));
     const curvesEl = document.getElementById("curves");
@@ -1374,10 +1391,9 @@
       const img = portraitImgs[pIdx];
       if (!img || !img.complete || !img.naturalWidth) return;
 
-      // scale the glyph height by the same factor as pSizeEff so the cell
-      // count (and thus the face's detail) is identical at every width — only
-      // the rendered size shrinks
-      const charH = ((pCharEff != null) ? pCharEff : P_CHAR) * composeScale(), charW = charH * 0.6;
+      // glyphScale shrinks the glyphs slower than the portrait on small screens,
+      // so the mosaic gets coarser (fewer, chunkier cells) the smaller the display
+      const charH = ((pCharEff != null) ? pCharEff : P_CHAR) * glyphScale(), charW = charH * 0.6;
       const cols = Math.max(1, Math.floor(pSizeEff / charW));
       const rows = Math.max(1, Math.floor(pSizeEff / charH));
 
@@ -1461,12 +1477,13 @@
       vctx.setTransform(1, 0, 0, 1, 0, 0);
       vctx.clearRect(0, 0, W, H);
 
-      if (PIXEL <= 1) {
+      const px = curvePixel();
+      if (px <= 1) {
         vctx.imageSmoothingEnabled = true;
         vctx.drawImage(s.src, 0, 0);
       } else {
-        const lowW = Math.max(1, Math.round(w / PIXEL));
-        const lowH = Math.max(1, Math.round(h / PIXEL));
+        const lowW = Math.max(1, Math.round(w / px));
+        const lowH = Math.max(1, Math.round(h / px));
         s.low.width = lowW;
         s.low.height = lowH;
         // average down for clean blocks, then blow back up with no smoothing
