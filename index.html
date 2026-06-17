@@ -277,6 +277,19 @@
     gap: 9px;
   }
   .contact-list a:hover { color: var(--pumpkin); }
+  /* the location is a button so it can open the "which London?" map modal,
+     but it should read as just another contact line — with a dotted hint. */
+  .loc-btn {
+    font-family: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-align: left;
+    border-bottom: 1px dotted var(--ink-faint);
+    transition: color .2s ease, border-color .2s ease;
+  }
+  .loc-btn:hover, .loc-btn:focus-visible { color: var(--pumpkin); border-color: var(--pumpkin); }
   .contact-list .tag {
     font-family: var(--mono);
     font-size: 10px;
@@ -688,6 +701,8 @@
     transition: transform .4s cubic-bezier(.2,.7,.2,1), opacity .4s ease;
   }
   .modal-root.open .modal { transform: none; opacity: 1; }
+  /* restore-on-return: snap the modal in with no fade (see openModal) */
+  .modal-root.no-anim, .modal-root.no-anim .modal { transition: none; }
   .modal-close {
     position: absolute;
     top: 14px; right: 14px;
@@ -813,7 +828,61 @@
     max-width: 64ch;
   }
 
+  /* ══ "Which London?" map modal ═══════════════════════════════
+     Two side-by-side OSM maps; the right one is the impostor. */
+  .london-maps {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-top: 26px;
+  }
+  .london-map {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .london-map iframe {
+    width: 100%;
+    height: 260px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--bg);
+    display: block;
+    filter: saturate(.92);
+  }
+  /* dim + de-saturate the wrong London so the right one pops */
+  .london-map--wrong iframe {
+    filter: grayscale(.7) saturate(.5) opacity(.78);
+  }
+  .london-cap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-weight: 600;
+    font-size: 0.98rem;
+  }
+  .london-cap .flag { font-size: 1.05rem; }
+  .map-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .map-tag.yes { background: var(--pumpkin); color: #fff; }
+  .map-tag.no  { background: rgba(28,27,24,.08); color: var(--ink-faint); }
+
   @media (max-width: 560px) {
+    .modal-photos { grid-template-columns: repeat(2, 1fr); }
+    /* the hero is tight on phones — drop the "make your own" invite there */
+    .trust-bar a.headshot-cta { display: none; }
+    .london-maps { grid-template-columns: 1fr; }
+    .london-map iframe { height: 220px; }
+  }
     .modal-photos { grid-template-columns: repeat(2, 1fr); }
     /* the hero is tight on phones — drop the "make your own" invite there */
     .trust-bar a.headshot-cta { display: none; }
@@ -917,7 +986,7 @@
           <ul class="contact-list">
             <li><a href="mailto:evankoza@hotmail.com"><span class="tag">@</span>evankoza@hotmail.com</a></li>
             <li><a href="tel:+12263785926"><span class="tag">tel</span>+1 (226) 378-5926</a></li>
-            <li><span><span class="tag">loc</span>London, ON</span></li>
+            <li><button type="button" class="loc-btn" id="loc-london" aria-haspopup="dialog"><span class="tag">loc</span>London, ON</button></li>
           </ul>
         </div>
 
@@ -1065,6 +1134,32 @@
           <h4>Stack</h4>
           <div class="chips" id="modal-stack"></div>
         </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ "WHICH LONDON?" MODAL ═══════════════════════════════
+       Opened from the "loc · London, ON" contact line. Two OSM maps
+       side by side; the joke is that I mean the Ontario one. -->
+  <div class="modal-root" id="london-root" aria-hidden="true">
+    <div class="modal-scrim" data-london-close></div>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="london-title">
+      <button class="modal-close" id="london-close" aria-label="Close">&times;</button>
+      <span class="eyebrow"><span class="prompt">~ $</span> ping london</span>
+      <h3 class="modal-title" id="london-title">No no no &mdash; <span class="hash">not that</span> London, <em>this</em> London</h3>
+      <p class="modal-lead">Whenever I say I&rsquo;m from London, someone pictures Big Ben. Close &mdash; wrong continent. I mean the one with the forks in the river and a Tim Hortons on every corner.</p>
+
+      <div class="london-maps">
+        <figure class="london-map">
+          <iframe loading="lazy" title="Map of London, Ontario, Canada"
+            src="https://www.openstreetmap.org/export/embed.html?bbox=-81.40%2C42.88%2C-81.08%2C43.08&amp;layer=mapnik&amp;marker=42.9849%2C-81.2453"></iframe>
+          <figcaption class="london-cap"><span class="flag">🇨🇦</span> London, Ontario <span class="map-tag yes">this one →</span></figcaption>
+        </figure>
+        <figure class="london-map london-map--wrong">
+          <iframe loading="lazy" title="Map of London, England"
+            src="https://www.openstreetmap.org/export/embed.html?bbox=-0.36%2C51.40%2C0.10%2C51.62&amp;layer=mapnik&amp;marker=51.5074%2C-0.1278"></iframe>
+          <figcaption class="london-cap"><span class="flag">🏴󠁧󠁢󠁥󠁮󠁧󠁿</span> London, England <span class="map-tag no">not this one</span></figcaption>
+        </figure>
       </div>
     </div>
   </div>
@@ -1915,7 +2010,7 @@
     let modalField = null;   // set up in §4
     let currentProject = null;   // index of the project whose modal is open
 
-    function openModal(pi) {
+    function openModal(pi, instant) {
       const proj = PROJECTS[pi % PROJECTS.length];
       currentProject = pi;
       numEl.textContent = String((pi % PROJECTS.length) + 1).padStart(2, "0");
@@ -1965,9 +2060,14 @@
         photosEl.style.display = "none";
       }
 
+      // On a return-restore we snap straight to the open state (no fade);
+      // re-enable transitions after paint so closing still animates.
+      if (instant) root.classList.add("no-anim");
       root.classList.add("open");
       root.setAttribute("aria-hidden", "false");
       document.body.style.overflow = "hidden";
+      if (instant) requestAnimationFrame(() =>
+        requestAnimationFrame(() => root.classList.remove("no-anim")));
       if (modalField && !reduceMotion) modalField.start();
     }
     function closeModal() {
@@ -2006,7 +2106,7 @@
       try { localStorage.removeItem(RETURN_KEY); } catch (_) {}
       if (!state) return;
       window.scrollTo({ top: state.scrollY || 0, behavior: "instant" });
-      if (state.project != null) openModal(state.project);
+      if (state.project != null) openModal(state.project, true);
     })();
     masonry.addEventListener("click", (e) => {
       const tile = e.target.closest(".tile");
@@ -2019,6 +2119,30 @@
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && root.classList.contains("open")) closeModal();
+    });
+
+    // ── 3b. "which London?" modal ─────────────────────────────────────
+    // The "loc · London, ON" contact line opens a two-map gag clearing up
+    // which London I mean. Self-contained: its own open/close, scrim-click,
+    // and Escape, mirroring the project modal above.
+    const londonRoot = document.getElementById("london-root");
+    function openLondon() {
+      londonRoot.classList.add("open");
+      londonRoot.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+    }
+    function closeLondon() {
+      londonRoot.classList.remove("open");
+      londonRoot.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+    }
+    document.getElementById("loc-london").addEventListener("click", openLondon);
+    document.getElementById("london-close").addEventListener("click", closeLondon);
+    londonRoot.addEventListener("pointerdown", (e) => {
+      if (e.target === londonRoot || e.target.hasAttribute("data-london-close")) closeLondon();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && londonRoot.classList.contains("open")) closeLondon();
     });
 
     // ── 4. flowing monospace character field ──────────────────────────
