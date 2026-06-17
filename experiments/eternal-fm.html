@@ -1,0 +1,1682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eternal FM</title>
+<meta name="description" content="An infinite-playlist machine: a from-scratch DSP pipeline finds musically similar moments so a song loops forever and one track flows into the next — fully client-side, gapless." />
+<style>
+  :root{
+    --bg:#efece4; --card:#f7f5f0; --ink:#26221a; --muted:#857e6e;
+    --line:#dcd7cb; --accent:#C95000; --accent-hi:#F2622E;
+    --ink-faint:rgba(38,34,26,.42);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .page{max-width:1060px;margin:0 auto;padding:28px 20px 60px}
+
+  /* compile-style header — shared chrome across the experiments */
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent)}
+  .eyebrow .prompt{color:var(--ink-faint)}
+  .topbar{display:flex;align-items:flex-start;justify-content:space-between;
+    flex-wrap:wrap;gap:12px;margin-bottom:20px}
+  .topbar h1{font-size:clamp(1.4rem,3vw,2rem);font-weight:800;letter-spacing:-.03em;
+    line-height:1.05;margin:6px 0 0}
+  .topbar .sub{margin:6px 0 0;color:var(--muted);font-size:.92rem;line-height:1.5;max-width:64ch}
+  .topbar .links{display:flex;gap:10px;flex-shrink:0}
+  .topbar a.nav{font-family:var(--mono);font-size:12px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);text-decoration:none;
+    border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--card);
+    white-space:nowrap;transition:color .15s,border-color .15s,background .15s}
+  .topbar a.nav:hover{color:var(--accent);border-color:var(--accent)}
+
+  /* ── the dark immersive player, framed like an embedded screen ───────── */
+  .player{position:relative;background:#08080a;border:1px solid #1b1b1f;border-radius:16px;
+    overflow:hidden;height:min(78vh,720px);min-height:560px;display:flex;flex-direction:column;
+    box-shadow:0 24px 60px -28px rgba(0,0,0,.6);
+    color:#fff;font-family:"JetBrains Mono",var(--mono)}
+  .player *{box-sizing:border-box}
+
+  .efm-top{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 18px 8px;flex:none}
+  .efm-brand{background:none;border:0;color:rgba(255,255,255,.25);cursor:pointer;
+    font-family:inherit;font-size:11px;letter-spacing:.3em;padding:0;transition:color .15s}
+  .efm-brand:hover{color:rgba(255,255,255,.6)}
+  .efm-time{color:rgba(255,255,255,.32);font-size:11px;letter-spacing:.12em;font-variant-numeric:tabular-nums}
+
+  .efm-status{flex:none;padding:6px 18px;font-size:11px;letter-spacing:.1em;text-align:center;
+    color:#7fd;background:rgba(50,255,200,.06);display:none}
+
+  .efm-timeline-wrap{flex:none;border-top:1px solid rgba(255,255,255,.08);
+    border-bottom:1px solid rgba(255,255,255,.08);padding:6px 0;position:relative}
+  .efm-tl-zoom{position:absolute;top:5px;right:14px;display:flex;gap:8px;z-index:5}
+  .efm-tl-zoom button{width:20px;height:20px;display:flex;align-items:center;justify-content:center;
+    background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.25);
+    font-family:inherit;font-size:12px;cursor:pointer;transition:.15s}
+  .efm-tl-zoom button:hover{color:rgba(255,255,255,.6);border-color:rgba(255,255,255,.3)}
+  .efm-tl-view{width:100%;overflow:hidden;cursor:grab;user-select:none;touch-action:none}
+  .efm-tl-view:active{cursor:grabbing}
+  .efm-tl-view svg{display:block;will-change:transform}
+  .efm-tl-fade-l,.efm-tl-fade-r{position:absolute;top:0;bottom:0;width:90px;pointer-events:none;z-index:2}
+  .efm-tl-fade-l{left:0;background:linear-gradient(to right,#08080a,transparent)}
+  .efm-tl-fade-r{right:0;background:linear-gradient(to left,#08080a,transparent)}
+
+  .efm-now{flex:none;display:flex;align-items:center;gap:14px;padding:12px 18px}
+  .efm-now img{width:40px;height:40px;object-fit:cover;flex:none}
+  .efm-now .meta{min-width:0}
+  .efm-now .title{font-size:13px;letter-spacing:.08em;line-height:1.25;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .efm-now .artist{font-size:11px;letter-spacing:.08em;color:rgba(255,255,255,.4);margin:2px 0 0}
+  .efm-now .attr{font-size:9px;letter-spacing:.08em;color:rgba(255,255,255,.2);margin:2px 0 0}
+  .efm-now .live{margin-left:auto;width:8px;height:8px;border-radius:50%;flex:none;transition:opacity .2s}
+
+  .efm-controls{flex:none;border-top:1px solid rgba(255,255,255,.08);
+    display:flex;align-items:center;justify-content:center;gap:30px;padding:10px}
+  .efm-skip{background:none;border:0;color:rgba(255,255,255,.4);cursor:pointer;padding:8px;
+    display:flex;transition:color .15s}
+  .efm-skip:hover{color:#fff}
+  .efm-dial{cursor:pointer;user-select:none;touch-action:none}
+
+  .efm-graph{flex:1;position:relative;border-top:1px solid rgba(255,255,255,.05);min-height:0}
+  .efm-graph canvas{width:100%;height:100%;display:block}
+  .efm-graph .legend{position:absolute;bottom:10px;right:14px;color:rgba(255,255,255,.12);
+    font-size:10px;letter-spacing:.18em;pointer-events:none}
+  .efm-graph .hint{position:absolute;bottom:10px;left:14px;color:rgba(255,255,255,.12);
+    font-size:10px;letter-spacing:.14em;pointer-events:none}
+
+  /* start / loading overlay */
+  .efm-overlay{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;background:rgba(6,6,8,.86);
+    backdrop-filter:blur(3px);cursor:pointer;text-align:center;padding:24px}
+  .efm-overlay .ring{width:74px;height:74px;border-radius:50%;border:1px solid rgba(255,255,255,.4);
+    display:flex;align-items:center;justify-content:center;transition:.2s}
+  .efm-overlay:hover .ring{border-color:#fff;transform:scale(1.04)}
+  .efm-overlay .lbl{font-size:11px;letter-spacing:.34em;color:rgba(255,255,255,.6)}
+  .efm-overlay .desc{font-size:11px;letter-spacing:.04em;color:rgba(255,255,255,.32);
+    max-width:42ch;line-height:1.7}
+  .efm-overlay.busy{cursor:default}
+  .efm-overlay.busy .ring{animation:efm-spin 1.1s linear infinite;border-top-color:rgba(255,255,255,.15)}
+  @keyframes efm-spin{to{transform:rotate(360deg)}}
+  .efm-hidden{display:none!important}
+
+  /* how-it-works caption (light theme, below the player) */
+  .note{margin:22px 2px 0;color:var(--muted);font-size:.86rem;line-height:1.65;max-width:74ch}
+  .note b{color:var(--ink);font-weight:600}
+  .note code{font-family:var(--mono);font-size:.82em;background:#fff;border:1px solid var(--line);
+    border-radius:5px;padding:1px 5px;color:var(--ink)}
+  .note .cc{margin-top:12px;font-size:.78rem;color:var(--ink-faint)}
+  .note a{color:var(--accent);text-decoration:none}
+  .note a:hover{text-decoration:underline}
+
+  @media (max-width:560px){
+    .player{height:auto;min-height:0}
+    .efm-graph{height:240px;flex:none}
+    .efm-controls{gap:18px}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="topbar">
+    <div>
+      <span class="eyebrow"><span class="prompt">~ $</span> ./eternal-fm --demo</span>
+      <h1>Eternal FM</h1>
+      <p class="sub">An infinite-playlist machine. Every song is decoded once, then played
+        beat&#8209;by&#8209;beat &mdash; so a &ldquo;quantum leap&rdquo; to a musically similar moment is just a
+        different read offset, completely gapless. A from&#8209;scratch DSP pass (FFT &rarr; onsets &rarr;
+        beat grid &rarr; chroma + timbre) decides where it can jump. Press play and let it run.</p>
+    </div>
+    <nav class="links">
+      <a class="nav" href="../index.html">&larr; Portfolio</a>
+      <a class="nav" href="https://github.com/evankoza/eternal-fm" target="_blank" rel="noopener">Source</a>
+    </nav>
+  </header>
+
+  <div class="player" id="player">
+    <div class="efm-top">
+      <button class="efm-brand" id="efm-brand">ETERNAL FM</button>
+      <span class="efm-time" id="efm-time">0:00 / 0:00</span>
+    </div>
+
+    <div class="efm-status" id="efm-status"></div>
+
+    <div class="efm-timeline-wrap">
+      <div class="efm-tl-zoom">
+        <button id="efm-zoom-in" title="Zoom in">+</button>
+        <button id="efm-zoom-out" title="Zoom out">&minus;</button>
+      </div>
+      <div class="efm-tl-view" id="efm-tl-view">
+        <svg id="efm-tl-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="efm-tl-fade-l"></div>
+      <div class="efm-tl-fade-r"></div>
+    </div>
+
+    <div class="efm-now" id="efm-now"></div>
+
+    <div class="efm-controls">
+      <button class="efm-skip" id="efm-back" title="Previous song">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="19,20 9,12 19,4"/><line x1="5" y1="4" x2="5" y2="20"/></svg>
+      </button>
+      <div class="efm-dial" id="efm-dial"></div>
+      <button class="efm-skip" id="efm-fwd" title="Next song">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5,4 15,12 5,20"/><line x1="19" y1="4" x2="19" y2="20"/></svg>
+      </button>
+    </div>
+
+    <div class="efm-graph">
+      <canvas id="efm-graph-canvas"></canvas>
+      <span class="hint" id="efm-graph-hint">DRAG NODES &middot; SCROLL TO ZOOM</span>
+      <span class="legend" id="efm-graph-legend"></span>
+    </div>
+
+    <div class="efm-overlay" id="efm-overlay">
+      <div class="ring" id="efm-overlay-ring">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="color:rgba(255,255,255,.85);margin-left:3px"><polygon points="6,4 20,12 6,20"/></svg>
+      </div>
+      <div class="lbl" id="efm-overlay-lbl">TAP TO START</div>
+      <div class="desc" id="efm-overlay-desc">Six Creative Commons tracks, analysed in your browser. The radio never ends &mdash; songs loop on themselves and flow into one another.</div>
+    </div>
+  </div>
+
+  <p class="note">
+    <b>How it works.</b> Each track is fetched and decoded into a Web&nbsp;Audio buffer once, then a
+    Web&nbsp;Worker runs one STFT pass over the raw PCM: spectral&#8209;flux onsets &rarr; an
+    autocorrelation tempo with an octave&#8209;error guard &rarr; a phase&#8209;aligned beat grid &rarr;
+    per&#8209;beat <b>chroma</b> (12 pitch classes) and <b>timbre</b> (log&#8209;band energies) vectors.
+    Candidate jumps are phrase&#8209;aligned &mdash; a whole number of 16&#8209;beat phrases away from where the
+    music would have gone &mdash; and scored on spectral similarity, so leaps land on the beat and feel
+    intentional. The <b>dial</b> sets how adventurous the radio is; the <b>timeline</b> telegraphs each
+    armed jump and pulses the instant it fires (forward skips arc above, loops below). Between songs a
+    compatibility graph &mdash; the field of nodes below &mdash; picks what flows next. No ML, no backend:
+    just classic signal processing running entirely client&#8209;side.
+    <span class="cc">Music: Broke For Free &mdash; <i>Directionless EP</i>, licensed
+      <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noopener">CC&nbsp;BY&nbsp;3.0</a>
+      (<a href="https://brokeforfree.com" target="_blank" rel="noopener">brokeforfree.com</a>).
+      Audio streamed from the <a href="https://github.com/evankoza/eternal-fm" target="_blank" rel="noopener">project repo</a>.</span>
+  </p>
+</div>
+
+<!-- ── Analysis worker: pure PCM DSP, ported from analysisCore.ts ────────── -->
+<script id="efm-worker" type="text/js-worker">
+'use strict';
+function fft(re, im){
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++){
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j){ const tr=re[i];re[i]=re[j];re[j]=tr; const ti=im[i];im[i]=im[j];im[j]=ti; }
+  }
+  for (let len = 2; len <= n; len <<= 1){
+    const ang = (-2 * Math.PI) / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len){
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len/2; k++){
+        const a = i+k, b = i+k+len/2;
+        const tr = re[b]*cr - im[b]*ci;
+        const ti = re[b]*ci + im[b]*cr;
+        re[b] = re[a]-tr; im[b] = im[a]-ti;
+        re[a] += tr; im[a] += ti;
+        const ncr = cr*wr - ci*wi;
+        ci = cr*wi + ci*wr; cr = ncr;
+      }
+    }
+  }
+}
+
+const WIN = 1024, HOP = 512, NBANDS = 8;
+const BAND_EDGES = [0,100,200,400,800,1600,3200,6400,Infinity];
+const CHROMA_LO = 80, CHROMA_HI = 2000;
+const WAVEFORM_RATE = 40;
+
+function computeWaveformPeaks(channels, sr){
+  const n = channels[0] ? channels[0].length : 0;
+  if (n === 0) return null;
+  const bucketLen = Math.max(1, Math.round(sr / WAVEFORM_RATE));
+  const count = Math.ceil(n / bucketLen);
+  const peaks = new Float32Array(count);
+  for (const ch of channels){
+    for (let b = 0; b < count; b++){
+      const end = Math.min(n, (b+1)*bucketLen);
+      let m = peaks[b];
+      for (let i = b*bucketLen; i < end; i++){ const a = Math.abs(ch[i]); if (a > m) m = a; }
+      peaks[b] = m;
+    }
+  }
+  let max = 0;
+  for (let b = 0; b < count; b++) if (peaks[b] > max) max = peaks[b];
+  if (max > 0) for (let b = 0; b < count; b++) peaks[b] /= max;
+  return peaks;
+}
+
+// ── Spectral jumps (ported from quantumJumps.ts) ──────────────────────────
+const W_CHROMA = 1.2, W_TIMBRE = 0.35, W_LOUD = 0.05;
+function beatDist(a, b){
+  let dc = 0;
+  for (let i = 0; i < 12; i++){ const d = a.chroma[i]-b.chroma[i]; dc += d*d; }
+  dc = Math.sqrt(dc);
+  let dt = 0; const tl = a.timbre.length;
+  for (let i = 0; i < tl; i++){ const d = a.timbre[i]-b.timbre[i]; dt += d*d; }
+  dt = Math.sqrt(dt/tl);
+  return W_CHROMA*dc + W_TIMBRE*dt + W_LOUD*Math.abs(a.loud-b.loud);
+}
+function buildSpectralJumps(beats, feats, totalSec){
+  const B = beats.length;
+  if (B < 48 || feats.length !== B) return [];
+  const SAFE_SEC = 10;
+  let safeStart = 0; while (safeStart < B && beats[safeStart].start < SAFE_SEC) safeStart++;
+  let safeEnd = B; while (safeEnd > 0 && beats[safeEnd-1].start > totalSec - SAFE_SEC) safeEnd--;
+  const BAR = 4, PHRASE = 16, CTX = 6;
+  if (safeEnd - safeStart < PHRASE*2) return [];
+  const w = []; let wSum = 0;
+  for (let k = 0; k < CTX; k++){ w.push(1/(1+0.35*k)); wSum += w[k]; }
+  const ctxDist = (landA, landB) => {
+    let sum = 0;
+    for (let k = 0; k < CTX; k++) sum += w[k]*beatDist(feats[landA+k], feats[landB+k]);
+    return sum/wSum;
+  };
+  const cands = [];
+  for (let i = safeStart; i + 1 + CTX < safeEnd; i += BAR){
+    const dir = (((i-safeStart)/BAR)%2 === 0) ? 1 : -1;
+    const land = i+1; let best = null;
+    for (let mult = 1; mult <= 8; mult++){
+      const j = land + dir*PHRASE*mult;
+      if (j < safeStart || j + CTX >= safeEnd) break;
+      const d = ctxDist(land, j);
+      if (!best || d < best.d) best = { fromBeat:i, toBeat:j, d };
+    }
+    if (best) cands.push(best);
+  }
+  if (cands.length === 0) return [];
+  const ds = cands.map(c => c.d).sort((a,b) => a-b);
+  const T = Math.max(ds[Math.floor(ds.length*0.25)], 1e-6);
+  return cands.map(c => ({
+    fromBeat:c.fromBeat, toBeat:c.toBeat,
+    fromTime:beats[c.fromBeat].start, toTime:beats[c.toBeat].start,
+    score: Math.exp(-Math.LN2 * c.d / T),
+  }));
+}
+
+function analyzePcm(channels, sr, features){
+  if (channels.length === 0) return null;
+  const n = channels[0].length;
+  if (n < sr*20) return null;
+  const totalSec = n/sr;
+  const chs = channels.length;
+  const mono = chs === 1 ? channels[0] : new Float32Array(n);
+  if (chs > 1){
+    for (let c = 0; c < chs; c++){ const d = channels[c]; for (let i = 0; i < n; i++) mono[i] += d[i]/chs; }
+  }
+  const frames = Math.floor((n - WIN)/HOP);
+  if (frames < 64) return null;
+  const frameRate = sr/HOP;
+  const half = WIN/2;
+  const binPc = new Int8Array(half).fill(-1);
+  const binBand = new Int8Array(half);
+  for (let k = 1; k < half; k++){
+    const f = (k*sr)/WIN;
+    if (f >= CHROMA_LO && f <= CHROMA_HI){
+      const midi = Math.round(69 + 12*Math.log2(f/440));
+      binPc[k] = ((midi%12)+12)%12;
+    }
+    let b = 0; while (b < NBANDS-1 && f >= BAND_EDGES[b+1]) b++;
+    binBand[k] = b;
+  }
+  const hann = new Float32Array(WIN);
+  for (let i = 0; i < WIN; i++) hann[i] = 0.5*(1 - Math.cos((2*Math.PI*i)/(WIN-1)));
+  const flux = new Float32Array(frames);
+  const rms = new Float32Array(frames);
+  const chromaF = new Float32Array(frames*12);
+  const bandF = new Float32Array(frames*NBANDS);
+  const re = new Float32Array(WIN), im = new Float32Array(WIN);
+  const prevMag = new Float32Array(half);
+  for (let f = 0; f < frames; f++){
+    const off = f*HOP; let sumSq = 0;
+    for (let i = 0; i < WIN; i++){ const s = mono[off+i]; re[i] = s*hann[i]; im[i] = 0; sumSq += s*s; }
+    rms[f] = Math.sqrt(sumSq/WIN);
+    fft(re, im);
+    let fl = 0; const cOff = f*12, bOff = f*NBANDS;
+    for (let k = 1; k < half; k++){
+      const mag = Math.hypot(re[k], im[k]);
+      const d = mag - prevMag[k];
+      if (d > 0) fl += d;
+      prevMag[k] = mag;
+      const pc = binPc[k];
+      if (pc >= 0) chromaF[cOff+pc] += mag;
+      bandF[bOff+binBand[k]] += mag*mag;
+    }
+    flux[f] = fl;
+  }
+  let mean = 0; for (let f = 0; f < frames; f++) mean += flux[f]; mean /= frames;
+  const env = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) env[f] = Math.max(0, flux[f]-mean);
+  const minLag = Math.floor((frameRate*60)/180);
+  const maxLag = Math.ceil((frameRate*60)/70);
+  const acCap = Math.min(2*maxLag, frames-1);
+  const ac = new Float32Array(acCap+1);
+  for (let lag = minLag; lag <= acCap; lag++){
+    let s = 0; for (let f = 0; f+lag < frames; f++) s += env[f]*env[f+lag];
+    ac[lag] = s;
+  }
+  let bestLag = minLag, bestScore = -Infinity;
+  for (let lag = minLag; lag <= maxLag && lag < frames; lag++){
+    const score = ac[lag] + 0.5*(2*lag <= acCap ? ac[2*lag] : 0);
+    if (score > bestScore){ bestScore = score; bestLag = lag; }
+  }
+  if (bestScore <= 0) return null;
+  const periodFrames = bestLag;
+  const beatDur = periodFrames/frameRate;
+  if (!isFinite(beatDur) || beatDur <= 0) return null;
+  let bestPhase = 0, bestPhaseE = -Infinity;
+  for (let phase = 0; phase < periodFrames; phase++){
+    let e = 0; for (let b = phase; b < frames; b += periodFrames) e += flux[b];
+    if (e > bestPhaseE){ bestPhaseE = e; bestPhase = phase; }
+  }
+  let maxFlux = 1e-9; for (let f = 0; f < frames; f++) if (flux[f] > maxFlux) maxFlux = flux[f];
+  const beats = [];
+  for (let b = bestPhase; b < frames; b += periodFrames){
+    beats.push({ start: b/frameRate, duration: beatDur, confidence: Math.min(1, flux[b]/maxFlux) });
+  }
+  if (beats.length < 16) return null;
+  const B = beats.length;
+  const beatFeats = [];
+  for (let bi = 0; bi < B; bi++){
+    const f0 = Math.max(0, Math.min(frames-1, Math.floor(beats[bi].start*frameRate)));
+    const f1 = Math.max(f0+1, Math.min(frames, Math.floor((beats[bi].start+beats[bi].duration)*frameRate)));
+    const chroma = new Array(12).fill(0);
+    const timbre = new Array(NBANDS).fill(0);
+    let r = 0;
+    for (let f = f0; f < f1; f++){
+      for (let p = 0; p < 12; p++) chroma[p] += chromaF[f*12+p];
+      for (let b2 = 0; b2 < NBANDS; b2++) timbre[b2] += bandF[f*NBANDS+b2];
+      r += rms[f];
+    }
+    const cnt = f1-f0;
+    let cMax = 0; for (let p = 0; p < 12; p++) if (chroma[p] > cMax) cMax = chroma[p];
+    if (cMax > 0) for (let p = 0; p < 12; p++) chroma[p] /= cMax;
+    for (let b2 = 0; b2 < NBANDS; b2++) timbre[b2] = 10*Math.log10(timbre[b2]/cnt + 1e-9);
+    beatFeats.push({ chroma, timbre, loud: 20*Math.log10(r/cnt + 1e-6) });
+  }
+  for (let b2 = 0; b2 < NBANDS; b2++){
+    let m = 0; for (let bi = 0; bi < B; bi++) m += beatFeats[bi].timbre[b2]; m /= B;
+    let v = 0; for (let bi = 0; bi < B; bi++) v += (beatFeats[bi].timbre[b2]-m)**2;
+    const sd = Math.sqrt(v/B) || 1;
+    for (let bi = 0; bi < B; bi++) beatFeats[bi].timbre[b2] = (beatFeats[bi].timbre[b2]-m)/sd;
+  }
+  const SEG = 0.25;
+  const segCount = Math.max(1, Math.ceil(totalSec/SEG));
+  const segDb = new Float32Array(segCount);
+  const framesPerSeg = Math.max(1, Math.round(SEG*frameRate));
+  for (let s = 0; s < segCount; s++){
+    let sum = 0, cnt = 0; const startF = s*framesPerSeg;
+    for (let f = startF; f < startF+framesPerSeg && f < frames; f++){ sum += rms[f]; cnt++; }
+    const r = cnt ? sum/cnt : 1e-6;
+    segDb[s] = 20*Math.log10(r + 1e-6);
+  }
+  const segments = [];
+  for (let s = 0; s < segCount; s++){
+    segments.push({ start: s*SEG, duration: SEG, pitches: [], timbre: [],
+      loudness_start: segDb[s]-3, loudness_max: segDb[s] });
+  }
+  const jumps = buildSpectralJumps(beats, beatFeats, totalSec);
+  return { beats, segments, jumps, features, synthetic: false };
+}
+
+self.onmessage = function(e){
+  const d = e.data;
+  let analysis = null, waveform = null;
+  try { waveform = computeWaveformPeaks(d.channels, d.sampleRate); } catch (err) {}
+  try { analysis = analyzePcm(d.channels, d.sampleRate, d.features); } catch (err) {}
+  self.postMessage({ id: d.id, analysis, waveform }, waveform ? [waveform.buffer] : []);
+};
+</script>
+
+<!-- ── Main application ──────────────────────────────────────────────────── -->
+<script>
+'use strict';
+(function(){
+const WAVEFORM_RATE = 40;
+const RAW = 'https://raw.githubusercontent.com/evankoza/eternal-fm/main/public/demo/';
+
+// ── Demo catalog (ported from demoCatalog.ts) ─────────────────────────────
+const DEFS = [
+  { id:'demo-01', name:'Night Owl',           file:'Broke_For_Free_-_01_-_Night_Owl.mp3',         durationSec:194.07, color:'#7c6cff', color2:'#1b1740' },
+  { id:'demo-02', name:'My Always Mood',      file:'Broke_For_Free_-_02_-_My_Always_Mood.mp3',    durationSec:188.57, color:'#ff6c9c', color2:'#3a1024' },
+  { id:'demo-03', name:'Day Bird',            file:'Broke_For_Free_-_03_-_Day_Bird.mp3',          durationSec:223.26, color:'#ffc34d', color2:'#3a2a08' },
+  { id:'demo-04', name:'My Luck',             file:'Broke_For_Free_-_04_-_My_Luck.mp3',           durationSec:322.83, color:'#4dd2ff', color2:'#0a2a38' },
+  { id:'demo-05', name:"Mell's Parade",       file:'Broke_For_Free_-_05_-_Mells_Parade.mp3',      durationSec:198.10, color:'#6cff9c', color2:'#0e2e18' },
+  { id:'demo-06', name:'Only (Instrumental)', file:'Broke_For_Free_-_06_-_Only_Instrumental.mp3', durationSec:158.61, color:'#ff8c5c', color2:'#33150a' },
+];
+const ATTRIBUTION = 'Broke For Free · Directionless EP · CC BY 3.0';
+const demoAudioUrls = new Map();
+
+function coverArt(name, c1, c2){
+  const initials = name.split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300">'+
+    '<defs><radialGradient id="g" cx="35%" cy="30%" r="90%">'+
+    '<stop offset="0%" stop-color="'+c1+'"/><stop offset="100%" stop-color="'+c2+'"/>'+
+    '</radialGradient></defs>'+
+    '<rect width="300" height="300" fill="url(#g)"/>'+
+    '<circle cx="150" cy="150" r="74" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="2"/>'+
+    '<circle cx="150" cy="150" r="10" fill="rgba(0,0,0,0.45)"/>'+
+    '<text x="150" y="282" text-anchor="middle" font-family="monospace" font-size="16" '+
+    'fill="rgba(255,255,255,0.75)" letter-spacing="4">'+initials+'</text>'+
+    '</svg>';
+  return 'data:image/svg+xml;utf8,'+encodeURIComponent(svg);
+}
+function getDemoTracks(){
+  return DEFS.map(d => {
+    const albumArt = coverArt(d.name, d.color, d.color2);
+    demoAudioUrls.set(d.id, RAW + d.file);
+    return { id:d.id, uri:'demo:'+d.id, name:d.name, artists:['Broke For Free'],
+      albumName:'Directionless EP', albumArt, color:d.color,
+      duration_ms: Math.round(d.durationSec*1000), attribution: ATTRIBUTION };
+  });
+}
+
+// ── Quantum-jump helpers (ported from quantumJumps.ts) ────────────────────
+function buildPhraseAlignedJumps(beats, beatDur, totalSec, loudnessAt){
+  const MIN_SAFE_SEC = 12, MAX_SAFE_SEC = totalSec - 12;
+  const safeBeatStart = Math.max(0, Math.ceil(MIN_SAFE_SEC/beatDur));
+  const safeBeatEnd = Math.min(beats.length, Math.floor(MAX_SAFE_SEC/beatDur));
+  const PHRASE = 16, HALF_PHRASE = 8;
+  const jumps = [];
+  const contextSim = (tA, tB) => {
+    const W = 6; let sum = 0;
+    for (let k = 0; k < W; k++){ const d = loudnessAt(tA+k*beatDur) - loudnessAt(tB+k*beatDur); sum += d*d; }
+    return Math.exp(-Math.sqrt(sum/W)/6);
+  };
+  const bestJump = (origin, dir) => {
+    const land = origin+1; let best = null;
+    for (let mult = 1; mult <= 6; mult++){
+      const target = land + dir*PHRASE*mult;
+      if (target < safeBeatStart || target >= safeBeatEnd) break;
+      const score = contextSim(beats[land].start, beats[target].start);
+      if (!best || score > best.score){
+        best = { fromBeat:origin, toBeat:target, fromTime:beats[origin].start, toTime:beats[target].start, score };
+      }
+    }
+    return best;
+  };
+  for (let i = safeBeatStart; i < safeBeatEnd; i += PHRASE){
+    const fwd = bestJump(i, 1); if (fwd) jumps.push(fwd);
+    const loopOrigin = i + HALF_PHRASE;
+    if (loopOrigin < safeBeatEnd){ const bwd = bestJump(loopOrigin, -1); if (bwd) jumps.push(bwd); }
+  }
+  return jumps;
+}
+
+function selectPlannedJumps(jumps, beats, dialValue, maxVisible){
+  maxVisible = maxVisible || 8;
+  if (jumps.length === 0 || dialValue === 0 || beats.length === 0) return [];
+  const songEnd = beats[beats.length-1].start + beats[beats.length-1].duration;
+  const windowSize = songEnd/maxVisible;
+  const windows = Array.from({length:maxVisible}, () => []);
+  for (const j of jumps){
+    const w = Math.min(Math.floor(j.fromTime/windowSize), maxVisible-1);
+    windows[w].push(j);
+  }
+  const bests = [];
+  for (const bucket of windows){
+    if (bucket.length === 0) continue;
+    bucket.sort((a,b) => b.score-a.score);
+    bests.push(bucket[0]);
+  }
+  const taken = []; const picked = new Set();
+  for (const best of bests){
+    if (Math.random() < dialValue * Math.min(1, best.score*2)){
+      const prev = taken[taken.length-1];
+      if (prev && Math.abs(best.toTime-prev.fromTime) < 2 && Math.abs(best.fromTime-prev.toTime) < 2) continue;
+      picked.add(best);
+      taken.push({ fromTime:best.fromTime, toTime:best.toTime, score:best.score, isLoop:best.toTime < best.fromTime });
+    }
+  }
+  const minPlanned = Math.min(bests.length, Math.max(1, Math.round(dialValue*4)));
+  if (taken.length < minPlanned){
+    const fill = bests.filter(b => !picked.has(b)).sort((a,b) => b.score-a.score);
+    for (const b of fill){
+      if (taken.length >= minPlanned) break;
+      taken.push({ fromTime:b.fromTime, toTime:b.toTime, score:b.score, isLoop:b.toTime < b.fromTime });
+    }
+    taken.sort((a,b) => a.fromTime-b.fromTime);
+  }
+  return taken;
+}
+
+// ── Synthetic prefill analysis (ported from spotifyApi.ts) ────────────────
+const DEFAULT_FEATURES = { tempo:120, key:0, mode:1, energy:0.5, valence:0.5, danceability:0.5, loudness:-10 };
+function syntheticAnalysis(durationMs, features){
+  const bps = (features.tempo || 120)/60;
+  const beatDur = 1/bps;
+  const totalSec = durationMs/1000;
+  const beats = [];
+  for (let t = 0; t < totalSec; t += beatDur) beats.push({ start:t, duration:beatDur, confidence:0.5 });
+  const energy = features.energy != null ? features.energy : 0.5;
+  const baseDb = -18 + energy*10;
+  const segDur = 0.4;
+  const sections = Math.max(2, Math.round(totalSec/30));
+  const segments = [];
+  for (let t = 0; t < totalSec; t += segDur){
+    const edge = Math.min(1, t/8) * Math.min(1, (totalSec-t)/8);
+    const edgeDb = (1-edge)*-22;
+    const struct = Math.sin((t/totalSec)*Math.PI*sections)*3;
+    const micro = Math.sin(t*bps*Math.PI)*1.5 + (Math.random()-0.5)*2;
+    const loud = baseDb + edgeDb + struct + micro;
+    segments.push({ start:t, duration:segDur, pitches:[], timbre:[], loudness_start:loud-3, loudness_max:loud });
+  }
+  const loudnessAt = (t) => {
+    const idx = Math.min(segments.length-1, Math.max(0, Math.round(t/segDur)));
+    return segments[idx].loudness_max;
+  };
+  const jumps = buildPhraseAlignedJumps(beats, beatDur, totalSec, loudnessAt);
+  return { beats, segments, jumps, features, synthetic:true };
+}
+
+// ── Compatibility / structural edges (ported from compatibility.ts) ───────
+function buildStructuralEdges(tracks){
+  const edges = []; const n = tracks.length;
+  for (let i = 0; i < n; i++){
+    if (i+1 < n) edges.push({ trackIdA:tracks[i].id, trackIdB:tracks[i+1].id, score:0.75 });
+    if (i+2 < n) edges.push({ trackIdA:tracks[i].id, trackIdB:tracks[i+2].id, score:0.6 });
+    const jump = Math.max(1, Math.floor(n/3));
+    const j = (i+jump)%n;
+    if (j !== i && j !== i+1) edges.push({ trackIdA:tracks[i].id, trackIdB:tracks[j].id, score:0.58 });
+  }
+  const seen = new Set();
+  return edges.filter(e => {
+    const key = [e.trackIdA, e.trackIdB].sort().join('|');
+    if (seen.has(key)) return false; seen.add(key); return true;
+  });
+}
+
+// ── Analysis worker client (ported from audioAnalysis.ts) ─────────────────
+let worker = null, nextId = 0; const pending = new Map();
+function getWorker(){
+  if (worker) return worker;
+  try {
+    const src = document.getElementById('efm-worker').textContent;
+    const url = URL.createObjectURL(new Blob([src], { type:'text/javascript' }));
+    worker = new Worker(url);
+    worker.onmessage = (e) => {
+      const d = e.data; const cb = pending.get(d.id);
+      if (cb) cb({ analysis:d.analysis, waveform:d.waveform });
+      pending.delete(d.id);
+    };
+    worker.onerror = () => {
+      for (const cb of pending.values()) cb({ analysis:null, waveform:null });
+      pending.clear(); worker = null;
+    };
+  } catch (e) { worker = null; }
+  return worker;
+}
+function analyzeBuffer(buffer, features){
+  const channels = [];
+  for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c).slice());
+  const w = getWorker();
+  if (!w) return Promise.resolve({ analysis:null, waveform:null });
+  return new Promise(resolve => {
+    const id = nextId++;
+    pending.set(id, resolve);
+    w.postMessage({ id, sampleRate:buffer.sampleRate, features, channels }, channels.map(c => c.buffer));
+  });
+}
+
+// ── Gapless audio engine (ported from audioEngine.ts) ─────────────────────
+const Engine = (function(){
+  let ctx = null, buffer = null, masterGain = null;
+  let beats = [], volume = 0.8;
+  let playing = false, nextBeatIndex = 0, nextBeatTime = 0, schedulerTimer = null;
+  const SCHEDULE_AHEAD = 1.2, LOOKAHEAD_MS = 25, SPLICE_FADE = 0.006;
+  let scheduled = [], endTimer = null;
+  let jumpTimers = new Set();
+  let decideNextBeat = null, jumpListeners = [], endListeners = [];
+
+  function ensureCtx(){
+    if (!ctx){
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = ctx.createGain(); masterGain.gain.value = volume; masterGain.connect(ctx.destination);
+    }
+    return ctx;
+  }
+  function decodeAudio(arr){ return ensureCtx().decodeAudioData(arr); }
+  function setTrackBuffer(buf){ buffer = buf; return buf.duration; }
+
+  function scheduleBeat(index, when, fadeOut, fadeIn){
+    if (!ctx || !buffer || !masterGain) return null;
+    const beat = beats[index]; if (!beat) return null;
+    const dur = beat.duration; const F = Math.min(SPLICE_FADE, dur*0.5);
+    const src = ctx.createBufferSource(); src.buffer = buffer;
+    if (!fadeOut && !fadeIn){
+      src.connect(masterGain); src.start(when, beat.start, dur); src.stop(when+dur); return src;
+    }
+    const g = ctx.createGain(); src.connect(g); g.connect(masterGain);
+    if (fadeIn){
+      const s = when - F;
+      g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(1, when);
+      if (fadeOut){ g.gain.setValueAtTime(1, when+dur-F); g.gain.linearRampToValueAtTime(0, when+dur); }
+      src.start(s, beat.start, dur+F); src.stop(when+dur);
+    } else {
+      g.gain.setValueAtTime(1, when+dur-F); g.gain.linearRampToValueAtTime(0, when+dur);
+      src.start(when, beat.start, dur); src.stop(when+dur);
+    }
+    return src;
+  }
+
+  function scheduler(){
+    if (!ctx || !playing) return;
+    while (nextBeatTime < ctx.currentTime + SCHEDULE_AHEAD){
+      const idx = nextBeatIndex;
+      if (idx >= beats.length){
+        if (!endTimer){
+          const remainMs = Math.max(0, (nextBeatTime - ctx.currentTime)*1000) + 50;
+          endTimer = setTimeout(() => { endTimer = null; if (playing) finish(); }, remainMs);
+        }
+        return;
+      }
+      const naturalNext = idx+1;
+      const decided = decideNextBeat ? decideNextBeat(idx, naturalNext) : naturalNext;
+      const next = (decided === null || decided === undefined) ? naturalNext : decided;
+      const isJump = next !== naturalNext;
+      const prev = scheduled[scheduled.length-1];
+      const landing = prev ? prev.jumped : false;
+      const node = scheduleBeat(idx, nextBeatTime, isJump, landing);
+      scheduled.push({ index:idx, time:nextBeatTime, duration:beats[idx].duration, jumped:isJump, node });
+      if (isJump && beats[next]){
+        const fromSec = beats[idx].start, toSec = beats[next].start;
+        const delayMs = Math.max(0, (nextBeatTime + beats[idx].duration - ctx.currentTime)*1000);
+        const t = setTimeout(() => { jumpTimers.delete(t); jumpListeners.forEach(cb => cb(fromSec, toSec)); }, delayMs);
+        jumpTimers.add(t);
+      }
+      nextBeatTime += beats[idx].duration;
+      nextBeatIndex = next;
+    }
+  }
+  function finish(){ stop(); endListeners.forEach(cb => cb()); }
+  function clearEndTimer(){ if (endTimer){ clearTimeout(endTimer); endTimer = null; } }
+  function stopSources(){
+    for (const s of scheduled){ try { if (s.node) s.node.stop(); } catch (e) {} }
+    scheduled = [];
+    for (const t of jumpTimers) clearTimeout(t); jumpTimers.clear();
+  }
+
+  async function unlock(){
+    const c = ensureCtx();
+    if (c.state === 'suspended'){
+      try { await Promise.race([c.resume(), new Promise(r => setTimeout(r, 250))]); } catch (e) {}
+    }
+    return c.state === 'running';
+  }
+  async function play(fromBeat){
+    fromBeat = fromBeat || 0;
+    const c = ensureCtx();
+    if (c.state === 'suspended'){ try { await Promise.race([c.resume(), new Promise(r => setTimeout(r, 250))]); } catch (e) {} }
+    if (!buffer) throw new Error('no audio loaded');
+    clearEndTimer(); stopSources();
+    nextBeatIndex = Math.max(0, Math.min(fromBeat, beats.length-1));
+    nextBeatTime = c.currentTime + 0.05;
+    playing = true;
+    schedulerTimer = setInterval(scheduler, LOOKAHEAD_MS); scheduler();
+  }
+  function pause(){
+    if (ctx){
+      const now = ctx.currentTime;
+      while (scheduled.length > 1 && scheduled[0].time + scheduled[0].duration < now) scheduled.shift();
+      if (scheduled.length) nextBeatIndex = scheduled[0].index;
+      stopSources();
+      if (ctx.state === 'running') ctx.suspend();
+    }
+    playing = false; clearEndTimer();
+    if (schedulerTimer){ clearInterval(schedulerTimer); schedulerTimer = null; }
+  }
+  async function resume(){
+    if (!ctx || !buffer) return;
+    if (ctx.state === 'suspended') await ctx.resume();
+    if (playing) return;
+    nextBeatTime = ctx.currentTime + 0.05; scheduled = []; playing = true;
+    schedulerTimer = setInterval(scheduler, LOOKAHEAD_MS); scheduler();
+  }
+  function stop(){
+    playing = false; clearEndTimer();
+    if (schedulerTimer){ clearInterval(schedulerTimer); schedulerTimer = null; }
+    stopSources();
+  }
+  function setVolume(v){ volume = v; if (masterGain && ctx) masterGain.gain.setTargetAtTime(v, ctx.currentTime, 0.01); }
+  function getPositionSec(){
+    if (!ctx) return 0;
+    const now = ctx.currentTime;
+    while (scheduled.length > 1 && scheduled[0].time + scheduled[0].duration < now) scheduled.shift();
+    for (const s of scheduled){ if (now >= s.time && now < s.time + s.duration) return beats[s.index].start + (now - s.time); }
+    const last = scheduled[scheduled.length-1];
+    return last ? beats[last.index].start : 0;
+  }
+  function seekToBeat(beatIndex){
+    if (!ctx || !playing){ play(beatIndex); return; }
+    clearEndTimer(); stopSources();
+    nextBeatIndex = Math.max(0, Math.min(beatIndex, beats.length-1));
+    nextBeatTime = ctx.currentTime + 0.02;
+  }
+  return {
+    decodeAudio, setTrackBuffer,
+    setBeats: (b) => { beats = b; },
+    setJumpDecider: (fn) => { decideNextBeat = fn; },
+    onJump: (cb) => { jumpListeners.push(cb); return () => { jumpListeners = jumpListeners.filter(x => x !== cb); }; },
+    onEnded: (cb) => { endListeners.push(cb); return () => { endListeners = endListeners.filter(x => x !== cb); }; },
+    unlock, play, pause, resume, stop, setVolume, getPositionSec, seekToBeat,
+    isPlaying: () => playing, getDuration: () => buffer ? buffer.duration : 0,
+  };
+})();
+
+// ── Track preloader (ported from trackPreloader.ts) ───────────────────────
+const MAX_ENTRIES = 5;
+const preloadCache = new Map();
+function evictIfNeeded(keep){
+  while (preloadCache.size > MAX_ENTRIES){
+    const oldest = preloadCache.keys().next().value;
+    if (oldest === undefined || oldest === keep) break;
+    preloadCache.delete(oldest);
+  }
+}
+function preloadTrack(track, features){
+  const existing = preloadCache.get(track.id);
+  if (existing){ preloadCache.delete(track.id); preloadCache.set(track.id, existing); return existing; }
+  const job = (async () => {
+    const res = await fetch(demoAudioUrls.get(track.id));
+    if (!res.ok) throw new Error('audio fetch ' + res.status);
+    const bytes = await res.arrayBuffer();
+    const buffer = await Engine.decodeAudio(bytes);
+    let analysis = null, waveform = null;
+    try {
+      const r = await analyzeBuffer(buffer, features || DEFAULT_FEATURES);
+      analysis = r.analysis; waveform = r.waveform;
+    } catch (e) {}
+    return { buffer, analysis, waveform, duration: buffer.duration };
+  })();
+  job.catch(() => preloadCache.delete(track.id));
+  preloadCache.set(track.id, job);
+  evictIfNeeded(track.id);
+  return job;
+}
+
+// ── Eternal queue (ported from queue.ts) ──────────────────────────────────
+function shuffle(arr){
+  const a = arr.slice();
+  for (let i = a.length-1; i > 0; i--){ const j = Math.floor(Math.random()*(i+1)); const t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+class EternalQueue {
+  constructor(tracks, edges, onUpdate){
+    this.allTracks = tracks; this.pool = shuffle(tracks);
+    this.history = []; this.future = []; this.current = null;
+    this.dialValue = 0.5; this.onUpdate = onUpdate;
+    this.adjacency = new Map();
+    for (const e of edges){
+      if (!this.adjacency.has(e.trackIdA)) this.adjacency.set(e.trackIdA, []);
+      if (!this.adjacency.has(e.trackIdB)) this.adjacency.set(e.trackIdB, []);
+      this.adjacency.get(e.trackIdA).push({ id:e.trackIdB, score:e.score });
+      this.adjacency.get(e.trackIdB).push({ id:e.trackIdA, score:e.score });
+    }
+    for (const list of this.adjacency.values()) list.sort((a,b) => b.score-a.score);
+  }
+  planJumps(analysis){ return analysis ? selectPlannedJumps(analysis.jumps, analysis.beats, this.dialValue) : []; }
+  setDial(value){
+    this.dialValue = value;
+    const all = (this.current ? [this.current] : []).concat(this.future);
+    for (const entry of all) entry.plannedJumps = this.planJumps(entry.analysis);
+    this.onUpdate();
+  }
+  buildEntry(track){
+    const analysis = syntheticAnalysis(track.duration_ms, DEFAULT_FEATURES);
+    return { track, analysis, color:track.color, plannedJumps:this.planJumps(analysis), entryBeat:0, waveform:null };
+  }
+  refillPool(){
+    const exclude = new Set((this.current ? [this.current.track.id] : []).concat(this.future.map(e => e.track.id)));
+    this.pool = shuffle(this.allTracks.filter(t => !exclude.has(t.id)));
+  }
+  dequeue(){
+    if (this.pool.length === 0) this.refillPool();
+    const currentId = this.current ? this.current.track.id : null;
+    let idx = this.pool.findIndex(t => t.id !== currentId);
+    if (idx === -1) idx = 0;
+    return this.pool.splice(idx, 1)[0];
+  }
+  pickNext(fromId){
+    const poolIds = new Set(this.pool.map(t => t.id));
+    const connected = (this.adjacency.get(fromId) || []).filter(n => poolIds.has(n.id));
+    if (connected.length > 0){
+      const top = connected.slice(0, 6);
+      const best = top.reduce((a, b) => (a.score + Math.random()*0.05) >= (b.score + Math.random()*0.05) ? a : b);
+      return this.pool.find(t => t.id === best.id);
+    }
+    return this.pool[Math.floor(Math.random()*this.pool.length)];
+  }
+  prefetch(){
+    let fromId = (this.future.length ? this.future[this.future.length-1].track.id : (this.current ? this.current.track.id : null));
+    if (!fromId) fromId = this.pool[0] ? this.pool[0].id : null;
+    while (this.future.length < 3){
+      if (this.pool.length === 0) this.refillPool();
+      if (this.pool.length === 0) break;
+      const track = this.pickNext(fromId);
+      if (!track) break;
+      const idx = this.pool.indexOf(track); if (idx !== -1) this.pool.splice(idx, 1);
+      this.future.push(this.buildEntry(track));
+      fromId = track.id;
+    }
+    this.onUpdate();
+  }
+  start(){
+    if (this.pool.length === 0) throw new Error('Empty pool');
+    const pastCount = Math.min(3, Math.max(0, this.pool.length-4));
+    for (let i = 0; i < pastCount; i++) this.history.push(this.buildEntry(this.dequeue()));
+    this.history.reverse();
+    this.prefetch();
+    return this.advance();
+  }
+  advance(){
+    const next = this.future.shift();
+    if (!next) throw new Error('No future entries');
+    if (this.current){ this.history.unshift(this.current); if (this.history.length > 3) this.history.pop(); }
+    this.current = next;
+    this.prefetch(); this.onUpdate();
+    return this.current;
+  }
+  back(){
+    if (this.history.length === 0) return null;
+    if (this.current) this.future.unshift(this.current);
+    this.current = this.history.shift();
+    this.onUpdate();
+    return this.current;
+  }
+  getWindow(){ return { past: this.history.slice(), current: this.current, future: this.future.slice() }; }
+  getCurrent(){ return this.current; }
+}
+
+// ── App state ─────────────────────────────────────────────────────────────
+const S = {
+  tracks: [], edges: [], queue: null,
+  past: [], current: null, future: [],
+  isPlaying: false, positionMs: 0, durationMs: 0,
+  dialValue: 0.5, started: false, transitioning: false,
+};
+
+// Jump-decider refs (read synchronously by the engine scheduler)
+const JD = { beats: [], jumpMap: new Map(), used: new Set(), lastJumpAt: -Infinity };
+
+function nearestBeatIndex(beats, t){
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < beats.length; i++){ const d = Math.abs(beats[i].start - t); if (d < bestD){ bestD = d; best = i; } }
+  return best;
+}
+
+Engine.setJumpDecider((justIdx, naturalNext) => {
+  if (S.dialValue <= 0) return naturalNext;
+  const jm = JD.jumpMap.get(justIdx);
+  if (!jm) return naturalNext;
+  if (JD.used.has(jm.key)) return naturalNext;
+  const cooldownMs = 9000 - S.dialValue*5000;
+  const nowMs = performance.now();
+  if (nowMs - JD.lastJumpAt < cooldownMs) return naturalNext;
+  JD.used.add(jm.key); JD.lastJumpAt = nowMs;
+  return jm.toBeat;
+});
+
+function buildJumpMap(beats, planned){
+  const map = new Map();
+  for (const p of planned){
+    map.set(nearestBeatIndex(beats, p.fromTime), {
+      toBeat: nearestBeatIndex(beats, p.toTime),
+      key: p.fromTime.toFixed(2) + '-' + p.toTime.toFixed(2),
+      isLoop: p.isLoop,
+    });
+  }
+  return map;
+}
+
+function refreshWindow(){
+  if (!S.queue) return;
+  const w = S.queue.getWindow();
+  S.past = w.past; S.current = w.current; S.future = w.future;
+  Timeline.markLayoutDirty();
+  renderNow();
+  updateLegend();
+}
+
+function attachWaveform(trackId, waveform){
+  if (!S.queue) return;
+  const w = S.queue.getWindow();
+  const all = w.past.concat(w.current ? [w.current] : [], w.future);
+  const entry = all.find(e => e.track.id === trackId);
+  if (!entry || entry.waveform) return;
+  entry.waveform = waveform;
+  Timeline.markLayoutDirty();
+}
+
+// ── Load + play the current track through the engine (ported from PlayerScreen) ──
+let loadToken = 0;
+async function loadCurrent(){
+  const cur = S.current;
+  if (!cur) return;
+  const myToken = ++loadToken;
+  S.transitioning = true;
+  JD.used = new Set(); JD.lastJumpAt = -Infinity;
+  S.isPlaying = false; S.positionMs = 0; S.durationMs = 0;
+  setStatus('Loading audio…');
+  Engine.stop();
+  try {
+    const pre = await preloadTrack(cur.track, cur.analysis && cur.analysis.features);
+    if (myToken !== loadToken) return;
+    const dur = Engine.setTrackBuffer(pre.buffer);
+    if (pre.waveform) attachWaveform(cur.track.id, pre.waveform);
+    const analysis = pre.analysis || cur.analysis;
+    const beats = analysis ? analysis.beats : [];
+    const planned = analysis ? selectPlannedJumps(analysis.jumps, analysis.beats, S.dialValue) : [];
+    JD.beats = beats;
+    JD.jumpMap = buildJumpMap(beats, planned);
+    Engine.setBeats(beats);
+    S.durationMs = dur*1000;
+    if (analysis){ cur.analysis = analysis; cur.plannedJumps = planned; Timeline.markLayoutDirty(); }
+    const running = await Engine.unlock();
+    if (myToken !== loadToken) return;
+    if (running){ await Engine.play(cur.entryBeat || 0); S.isPlaying = Engine.isPlaying(); }
+    setStatus(null);
+  } catch (e) {
+    if (myToken !== loadToken) return;
+    setStatus('Audio unavailable: ' + e.message);
+  } finally {
+    if (myToken === loadToken) S.transitioning = false;
+  }
+  renderNow();
+}
+
+function preloadWindow(){
+  const list = S.future.slice(0, 3).concat(S.past.slice(0, 1));
+  for (const entry of list){
+    preloadTrack(entry.track, entry.analysis && entry.analysis.features)
+      .then(pre => { if (pre.waveform) attachWaveform(entry.track.id, pre.waveform); })
+      .catch(() => {});
+  }
+}
+
+Engine.onJump((from, to) => { Timeline.setLeap(from, to); });
+Engine.onEnded(() => { doAdvance(); });
+
+async function doAdvance(){
+  if (S.transitioning || !S.queue) return;
+  S.queue.advance(); refreshWindow();
+  await loadCurrent(); preloadWindow();
+}
+async function doBack(){
+  if (S.transitioning || !S.queue) return;
+  if (S.queue.back()){ refreshWindow(); await loadCurrent(); preloadWindow(); }
+}
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const elTime = $('efm-time'), elStatus = $('efm-status'), elNow = $('efm-now');
+const elOverlay = $('efm-overlay'), elOverlayLbl = $('efm-overlay-lbl'), elOverlayDesc = $('efm-overlay-desc');
+const elLegend = $('efm-graph-legend');
+
+function setStatus(text){
+  if (text){ elStatus.textContent = text; elStatus.style.display = 'block'; }
+  else elStatus.style.display = 'none';
+}
+function fmtTime(ms){ const s = Math.floor(ms/1000); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+function updateLegend(){ elLegend.textContent = S.tracks.length + ' SONGS · ' + S.edges.length + ' CONNECTIONS'; }
+
+function renderNow(){
+  const cur = S.current;
+  if (!cur){ elNow.innerHTML = ''; return; }
+  const attr = cur.track.attribution ? '<p class="attr">'+cur.track.attribution.toUpperCase()+'</p>' : '';
+  elNow.innerHTML =
+    '<img src="'+cur.track.albumArt+'" alt="" style="box-shadow:0 0 12px '+cur.color+'44">'+
+    '<div class="meta">'+
+      '<p class="title">'+cur.track.name.toUpperCase()+'</p>'+
+      '<p class="artist">'+cur.track.artists.join(', ').toUpperCase()+'</p>'+ attr +
+    '</div>'+
+    '<div class="live" style="background:'+cur.color+';opacity:'+(S.isPlaying?1:0.3)+'"></div>';
+}
+
+// ── Dial (ported from Dial.tsx) ────────────────────────────────────────────
+const Dial = (function(){
+  const RADIUS = 40, STROKE = 3, MIN_ANGLE = -135, MAX_ANGLE = 135, DRAG_THRESHOLD = 4, TICK_COUNT = 11;
+  const size = RADIUS*2 + 20, cx = size/2, cy = size/2;
+  const el = $('efm-dial');
+  let value = S.dialValue, onChange = null, onToggle = null;
+  let dragging = false, startY = 0, startVal = 0, wasDragged = false;
+  function polar(a, r){ const rad = (a-90)*(Math.PI/180); return { x: cx + r*Math.cos(rad), y: cy + r*Math.sin(rad) }; }
+  function arc(r, a0, a1){ const s = polar(a0, r), e = polar(a1, r); const large = a1-a0 > 180 ? 1 : 0;
+    return 'M'+s.x+','+s.y+' A'+r+','+r+',0,'+large+',1,'+e.x+','+e.y; }
+  function v2a(v){ return MIN_ANGLE + v*(MAX_ANGLE-MIN_ANGLE); }
+  function render(){
+    const angle = v2a(value);
+    const tri = (cx-5)+','+(cy-7)+' '+(cx+8)+','+cy+' '+(cx-5)+','+(cy+7);
+    let ticks = '';
+    for (let i = 0; i < TICK_COUNT; i++){
+      const a = MIN_ANGLE + (i/(TICK_COUNT-1))*(MAX_ANGLE-MIN_ANGLE);
+      const inner = polar(a, RADIUS+4), outer = polar(a, RADIUS+9);
+      const active = i/(TICK_COUNT-1) <= value;
+      ticks += '<line x1="'+inner.x+'" y1="'+inner.y+'" x2="'+outer.x+'" y2="'+outer.y+'" stroke="#fff" stroke-opacity="'+(active?0.6:0.15)+'" stroke-width="'+(i===0||i===TICK_COUNT-1?1.5:1)+'"/>';
+    }
+    const glyph = S.isPlaying
+      ? '<g fill="#fff" fill-opacity="0.8"><rect x="'+(cx-6)+'" y="'+(cy-7)+'" width="4" height="14" rx="1"/><rect x="'+(cx+2)+'" y="'+(cy-7)+'" width="4" height="14" rx="1"/></g>'
+      : '<polygon points="'+tri+'" fill="#fff" fill-opacity="0.8"/>';
+    el.innerHTML =
+      '<svg width="'+size+'" height="'+size+'" style="overflow:visible">'+
+        '<path d="'+arc(RADIUS, MIN_ANGLE, MAX_ANGLE)+'" fill="none" stroke="#fff" stroke-opacity="0.1" stroke-width="'+STROKE+'" stroke-linecap="round"/>'+
+        (value > 0 ? '<path d="'+arc(RADIUS, MIN_ANGLE, angle)+'" fill="none" stroke="#fff" stroke-opacity="0.8" stroke-width="'+STROKE+'" stroke-linecap="round"/>' : '')+
+        ticks +
+        '<circle cx="'+cx+'" cy="'+cy+'" r="'+RADIUS+'" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="1"/>'+
+        '<circle cx="'+cx+'" cy="'+cy+'" r="'+(RADIUS-14)+'" fill="#000" stroke="#fff" stroke-opacity="0.15" stroke-width="1"/>'+
+        glyph +
+      '</svg>';
+  }
+  el.addEventListener('pointerdown', (e) => {
+    dragging = true; wasDragged = false; startY = e.clientY; startVal = value;
+    try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dy = startY - e.clientY;
+    if (Math.abs(dy) > DRAG_THRESHOLD) wasDragged = true;
+    const next = Math.max(0, Math.min(1, startVal + dy/200));
+    value = next; if (onChange) onChange(next); render();
+  });
+  window.addEventListener('pointerup', () => {
+    if (dragging){ dragging = false; if (!wasDragged && onToggle) onToggle(); }
+  });
+  return {
+    init: (opts) => { onChange = opts.onChange; onToggle = opts.onToggle; render(); },
+    setValue: (v) => { value = v; render(); },
+    rerender: render,
+  };
+})();
+
+// ── Timeline (ported from Timeline.tsx) ────────────────────────────────────
+const Timeline = (function(){
+  const LABEL_H = 18, DEFAULT_PX = 20, MIN_PX = 4, MAX_PX = 160;
+  const PLAYHEAD_X = 160, ARC_SCORE_MIN = 0.28, MAX_ARCS = 120;
+  const SNAP_MS = 480, GLIDE_MS = 480, LEAP_MS = 750;
+  const view = $('efm-tl-view'), svg = $('efm-tl-svg');
+  let pxPerSec = DEFAULT_PX, zoomTarget = DEFAULT_PX, zoomCur = DEFAULT_PX;
+  let userOffset = 0, isFollowing = true, isSnapping = false;
+  let snapTimer = null, snapOffTimer = null, lastPointer = null, dragging = false;
+  let leap = null, layoutDirty = true, lastLayoutKey = '', layouts = [], M = null;
+  let glide = { trackId: undefined, ms: 0, until: 0 };
+  let songLayerEl = null, overlayEl = null;
+
+  function metrics(px){
+    const t = Math.log(px/MIN_PX)/Math.log(MAX_PX/MIN_PX);
+    const lerp = (a,b) => a + (b-a)*t;
+    const barH = lerp(10,44), arcAbove = lerp(34,84), arcBelow = lerp(24,62);
+    return { barH, arcAbove, arcBelow, barY:arcAbove, svgH: arcAbove+barH+arcBelow+LABEL_H };
+  }
+  function buildLayout(px){
+    const all = S.past.slice().reverse().map(e => ({ entry:e, isCurrent:false }))
+      .concat(S.current ? [{ entry:S.current, isCurrent:true }] : [])
+      .concat(S.future.map(e => ({ entry:e, isCurrent:false })));
+    const out = []; let x = 0;
+    for (const item of all){
+      const durSec = item.entry.track.duration_ms/1000;
+      const width = durSec*px;
+      out.push({ entry:item.entry, isCurrent:item.isCurrent, xStart:x, width, scale:px });
+      x += width;
+    }
+    return out;
+  }
+  function pcmWavePath(peaks, xStart, scale, m){
+    if (peaks.length < 2) return null;
+    const cy = m.barY + m.barH/2, maxH = m.barH/2 - 1.5;
+    const pxPerBucket = scale/WAVEFORM_RATE;
+    const stride = Math.max(1, Math.ceil(1.5/pxPerBucket));
+    const xs = [], amps = [];
+    for (let b = 0; b < peaks.length; b += stride){
+      let mx = 0; const end = Math.min(peaks.length, b+stride);
+      for (let i = b; i < end; i++) if (peaks[i] > mx) mx = peaks[i];
+      xs.push(xStart + (b/WAVEFORM_RATE)*scale);
+      amps.push(Math.max(0.015, mx)*maxH);
+    }
+    let d = '';
+    for (let i = 0; i < xs.length; i++) d += (i===0?'M':'L') + xs[i].toFixed(1)+','+(cy-amps[i]).toFixed(1)+' ';
+    for (let i = xs.length-1; i >= 0; i--) d += 'L'+xs[i].toFixed(1)+','+(cy+amps[i]).toFixed(1)+' ';
+    return d + 'Z';
+  }
+  function waveformPath(segments, xStart, scale, m){
+    if (!segments || segments.length < 2) return null;
+    let min = Infinity, max = -Infinity;
+    for (const s of segments){ if (s.loudness_max < min) min = s.loudness_max; if (s.loudness_max > max) max = s.loudness_max; }
+    const range = (max-min) || 1, cy = m.barY + m.barH/2, maxH = m.barH/2 - 1.5;
+    const amp = (s) => Math.max(0.04, (s.loudness_max-min)/range)*maxH;
+    let d = '';
+    segments.forEach((s, i) => { d += (i===0?'M':'L') + (xStart+s.start*scale).toFixed(1)+','+(cy-amp(s)).toFixed(1)+' '; });
+    for (let i = segments.length-1; i >= 0; i--) d += 'L'+(xStart+segments[i].start*scale).toFixed(1)+','+(cy+amp(segments[i])).toFixed(1)+' ';
+    return d + 'Z';
+  }
+  function arcGeom(x1, x2, isLoop, m){
+    const midX = (x1+x2)/2, span = Math.abs(x2-x1);
+    const h = Math.min(isLoop ? m.arcBelow-4 : m.arcAbove-4, Math.max(8, span*0.28));
+    const y = isLoop ? m.barY + m.barH : m.barY;
+    return { x1, y1:y, cx:midX, cy: isLoop ? y+h : y-h, x2, y2:y };
+  }
+  function arcPath(x1, x2, isLoop, m){ const g = arcGeom(x1,x2,isLoop,m); return 'M'+g.x1+','+g.y1+' Q'+g.cx+','+g.cy+' '+g.x2+','+g.y2; }
+
+  function buildSongLayer(){
+    let html = '';
+    for (let i = 0; i < layouts.length; i++){
+      const L = layouts[i], entry = L.entry, color = entry.color, scale = L.scale, xStart = L.xStart, width = L.width;
+      const allJumps = (entry.analysis ? entry.analysis.jumps : []).filter(j => j.score >= ARC_SCORE_MIN)
+        .sort((a,b) => b.score-a.score).slice(0, MAX_ARCS);
+      const fwd = allJumps.filter(j => j.toTime > j.fromTime);
+      const loops = allJumps.filter(j => j.toTime <= j.fromTime);
+      const wave = entry.waveform ? pcmWavePath(entry.waveform, xStart, scale, M) : waveformPath(entry.analysis ? entry.analysis.segments : [], xStart, scale, M);
+      const planned = entry.plannedJumps || [];
+      const isPlanned = (ft, tt) => { for (const p of planned){ if (Math.abs(p.fromTime-ft) < 0.1 && Math.abs(p.toTime-tt) < 0.1) return true; } return false; };
+      html += '<g>';
+      html += '<rect x="'+xStart+'" y="'+M.barY+'" width="'+width+'" height="'+M.barH+'" fill="'+color+'" fill-opacity="0.18"/>';
+      html += '<rect x="'+xStart+'" y="'+M.barY+'" width="'+width+'" height="1.5" fill="'+color+'" fill-opacity="0.85"/>';
+      html += '<rect x="'+xStart+'" y="'+(M.barY+M.barH-1.5)+'" width="'+width+'" height="1.5" fill="'+color+'" fill-opacity="0.5"/>';
+      if (wave) html += '<path d="'+wave+'" fill="'+color+'" fill-opacity="'+(entry.waveform?0.45:0.28)+'" stroke="'+color+'" stroke-width="0.4" stroke-opacity="'+(entry.waveform?0.55:0.35)+'"/>';
+      for (const j of fwd){
+        const x1 = xStart + j.fromTime*scale, x2 = xStart + j.toTime*scale;
+        const pl = isPlanned(j.fromTime, j.toTime);
+        const ao = pl ? 0.92 : 0.10 + j.score*0.30, sw = pl ? 1.8 : 0.8;
+        html += '<path d="'+arcPath(x1,x2,false,M)+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" stroke-opacity="'+ao+'"/>';
+        html += '<circle cx="'+x1+'" cy="'+M.barY+'" r="'+(pl?2.5:1.5)+'" fill="'+color+'" fill-opacity="'+ao+'"/>';
+        html += '<circle cx="'+x2+'" cy="'+M.barY+'" r="'+(pl?2.5:1.5)+'" fill="'+color+'" fill-opacity="'+ao+'"/>';
+      }
+      for (const j of loops){
+        const x1 = xStart + j.fromTime*scale, x2 = xStart + j.toTime*scale;
+        const pl = isPlanned(j.fromTime, j.toTime);
+        const ao = pl ? 0.92 : 0.10 + j.score*0.30, sw = pl ? 1.8 : 0.8;
+        html += '<path d="'+arcPath(x1,x2,true,M)+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" stroke-opacity="'+ao+'" stroke-dasharray="'+(pl?'5 3':'2 4')+'"/>';
+        html += '<circle cx="'+x1+'" cy="'+(M.barY+M.barH)+'" r="'+(pl?2.5:1.5)+'" fill="'+color+'" fill-opacity="'+ao+'"/>';
+        html += '<circle cx="'+x2+'" cy="'+(M.barY+M.barH)+'" r="'+(pl?2.5:1.5)+'" fill="'+color+'" fill-opacity="'+ao+'"/>';
+      }
+      html += '<text x="'+(xStart+5)+'" y="'+(M.svgH-3)+'" fill="#fff" fill-opacity="0.4" font-size="8" font-family="JetBrains Mono, monospace" letter-spacing="0.08em">'+esc(entry.track.name.toUpperCase().slice(0,36))+'</text>';
+      if (M.barH >= 16) html += '<text x="'+(xStart+5)+'" y="'+(M.barY+M.barH-6)+'" fill="#fff" fill-opacity="0.22" font-size="7" font-family="JetBrains Mono, monospace" letter-spacing="0.06em">'+esc(entry.track.artists.join(', ').toUpperCase().slice(0,30))+'</text>';
+      if (i < layouts.length-1) html += '<line x1="'+(xStart+width)+'" y1="0" x2="'+(xStart+width)+'" y2="'+(M.svgH-LABEL_H)+'" stroke="#fff" stroke-opacity="0.1" stroke-width="1"/>';
+      html += '</g>';
+    }
+    return html;
+  }
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function defs(){
+    return '<defs>'+
+      '<linearGradient id="fadeFwd" x1="0" y1="0" x2="1" y2="0">'+
+        '<stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="0.45" stop-color="#000" stop-opacity="0"/>'+
+        '<stop offset="0.85" stop-color="#000" stop-opacity="1"/><stop offset="1" stop-color="#000" stop-opacity="1"/></linearGradient>'+
+      '<linearGradient id="fadeBwd" x1="0" y1="0" x2="1" y2="0">'+
+        '<stop offset="0" stop-color="#000" stop-opacity="1"/><stop offset="0.15" stop-color="#000" stop-opacity="1"/>'+
+        '<stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>'+
+    '</defs>';
+  }
+
+  function rebuild(){
+    M = metrics(pxPerSec);
+    layouts = buildLayout(pxPerSec);
+    const totalWidth = layouts.reduce((acc, l) => Math.max(acc, l.xStart + l.width), 0) + 400;
+    svg.setAttribute('width', totalWidth);
+    svg.setAttribute('height', M.svgH);
+    view.style.height = M.svgH + 'px';
+    svg.innerHTML = defs() + '<g id="efm-song-layer"></g><g id="efm-overlay-layer"></g>';
+    songLayerEl = svg.querySelector('#efm-song-layer');
+    overlayEl = svg.querySelector('#efm-overlay-layer');
+    songLayerEl.innerHTML = buildSongLayer();
+  }
+
+  function frame(){
+    // ease zoom
+    if (Math.abs(Math.log(zoomTarget/zoomCur)) >= 0.005){
+      zoomCur *= Math.exp(Math.log(zoomTarget/zoomCur)*0.3);
+      pxPerSec = zoomCur; layoutDirty = true;
+    } else if (zoomCur !== zoomTarget){ zoomCur = zoomTarget; pxPerSec = zoomCur; layoutDirty = true; }
+
+    const layoutKey = pxPerSec.toFixed(3) + '|' + S.past.length + '|' + (S.current?S.current.track.id:'') + '|' + S.future.map(e=>e.track.id).join(',') + '|' + (S.current && S.current.waveform?'w':'') + '|' + (S.current?(S.current.plannedJumps||[]).length:0);
+    if (layoutDirty || layoutKey !== lastLayoutKey){ rebuild(); lastLayoutKey = layoutKey; layoutDirty = false; }
+
+    const currentLayout = layouts.find(l => l.isCurrent);
+    const positionX = currentLayout ? currentLayout.xStart + (S.positionMs/1000)*pxPerSec : 0;
+
+    // glide on discontinuity
+    const nowT = performance.now();
+    if (S.current && S.current.track.id === glide.trackId && Math.abs(S.positionMs - glide.ms) > 1500) glide.until = nowT + GLIDE_MS;
+    glide.trackId = S.current ? S.current.track.id : undefined; glide.ms = S.positionMs;
+    const isGliding = performance.now() < glide.until;
+
+    // beat pulse
+    let beatPulse = 0;
+    const curBeats = currentLayout && currentLayout.entry.analysis ? currentLayout.entry.analysis.beats : null;
+    if (curBeats && curBeats.length){
+      const t = S.positionMs/1000;
+      for (let i = 0; i < curBeats.length; i++){
+        const b = curBeats[i];
+        if (t >= b.start && t < b.start + b.duration){ beatPulse = Math.max(0, 1 - ((t-b.start)/(b.duration||0.5))*1.7); break; }
+      }
+    }
+
+    const followOffset = positionX - PLAYHEAD_X;
+    const translateX = -(isFollowing ? followOffset : followOffset + userOffset);
+    svg.style.transform = 'translateX(' + translateX + 'px)';
+    svg.style.transition = isSnapping ? 'transform '+SNAP_MS+'ms cubic-bezier(0.22,1,0.36,1)'
+      : isGliding ? 'transform '+GLIDE_MS+'ms cubic-bezier(0.22,1,0.36,1)' : 'none';
+
+    // overlay
+    if (overlayEl){
+      let o = '';
+      const totalWidth = parseFloat(svg.getAttribute('width'));
+      if (currentLayout){
+        if (positionX > 0) o += '<rect x="0" y="0" width="'+positionX+'" height="'+M.svgH+'" fill="url(#fadeBwd)"/>';
+        o += '<rect x="'+positionX+'" y="0" width="'+Math.max(0,totalWidth-positionX)+'" height="'+M.svgH+'" fill="url(#fadeFwd)"/>';
+        // current highlight
+        o += '<rect x="'+currentLayout.xStart+'" y="'+M.barY+'" width="'+currentLayout.width+'" height="'+M.barH+'" fill="#fff" fill-opacity="'+(0.025+beatPulse*0.10)+'"/>';
+        // telegraph
+        const posSec = S.positionMs/1000, LOOKAHEAD = 3;
+        let next = null;
+        for (const p of (currentLayout.entry.plannedJumps || [])){
+          if (p.fromTime >= posSec && p.fromTime - posSec <= LOOKAHEAD && (!next || p.fromTime < next.fromTime)) next = p;
+        }
+        if (next){
+          const charge = 1 - (next.fromTime - posSec)/LOOKAHEAD;
+          const x1 = currentLayout.xStart + next.fromTime*pxPerSec, x2 = currentLayout.xStart + next.toTime*pxPerSec;
+          const y = next.isLoop ? M.barY + M.barH : M.barY, color = currentLayout.entry.color;
+          o += '<path d="'+arcPath(x1,x2,next.isLoop,M)+'" fill="none" stroke="'+color+'" stroke-width="'+(1.2+charge*1.4)+'" stroke-opacity="'+(0.35+charge*0.6)+'"'+(next.isLoop?' stroke-dasharray="5 3"':'')+'/>';
+          o += '<circle cx="'+x1+'" cy="'+y+'" r="'+(2.5+charge*3.5)+'" fill="none" stroke="'+color+'" stroke-width="1.2" stroke-opacity="'+(0.25+charge*0.65)+'"/>';
+          o += '<circle cx="'+x2+'" cy="'+y+'" r="'+(2+charge*1.5)+'" fill="'+color+'" fill-opacity="'+(0.3+charge*0.6)+'"/>';
+        }
+        // playhead
+        o += '<line x1="'+positionX+'" y1="0" x2="'+positionX+'" y2="'+(M.svgH-LABEL_H)+'" stroke="#fff" stroke-width="1" stroke-opacity="'+(0.85-beatPulse*0.15)+'"/>';
+        o += '<circle cx="'+positionX+'" cy="'+M.barY+'" r="'+(2.5+beatPulse*2.5)+'" fill="#fff" fill-opacity="'+(0.4+beatPulse*0.6)+'"/>';
+        // leap pulse
+        if (leap){
+          const prog = (performance.now() - leap.at)/LEAP_MS;
+          if (prog >= 0 && prog < 1){
+            const x1 = currentLayout.xStart + leap.from*pxPerSec, x2 = currentLayout.xStart + leap.to*pxPerSec;
+            const isLoop = leap.to < leap.from, g = arcGeom(x1,x2,isLoop,M);
+            const tt = prog < 0.5 ? 2*prog*prog : 1 - Math.pow(-2*prog+2,2)/2;
+            const mt = 1-tt;
+            const px = mt*mt*g.x1 + 2*mt*tt*g.cx + tt*tt*g.x2;
+            const py = mt*mt*g.y1 + 2*mt*tt*g.cy + tt*tt*g.y2;
+            const fade = 1-prog, color = currentLayout.entry.color;
+            o += '<path d="'+arcPath(x1,x2,isLoop,M)+'" fill="none" stroke="#fff" stroke-width="2" stroke-opacity="'+(0.75*fade)+'"/>';
+            o += '<circle cx="'+px+'" cy="'+py+'" r="9" fill="'+color+'" fill-opacity="'+(0.25*fade)+'"/>';
+            o += '<circle cx="'+px+'" cy="'+py+'" r="3.5" fill="#fff" fill-opacity="'+(0.95*fade)+'"/>';
+          } else if (prog >= 1) leap = null;
+        }
+      }
+      overlayEl.innerHTML = o;
+    }
+  }
+
+  function zoomBy(factor){ zoomTarget = Math.min(MAX_PX, Math.max(MIN_PX, zoomTarget*factor)); }
+  function snapBack(){ isSnapping = true; isFollowing = true; userOffset = 0;
+    if (snapOffTimer) clearTimeout(snapOffTimer); snapOffTimer = setTimeout(() => { isSnapping = false; }, SNAP_MS); }
+  function userScroll(delta){ isFollowing = false; isSnapping = false;
+    if (snapOffTimer) clearTimeout(snapOffTimer); userOffset += delta;
+    if (snapTimer) clearTimeout(snapTimer); snapTimer = setTimeout(snapBack, 1000); }
+
+  view.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey){
+      const px = e.deltaMode === 1 ? e.deltaY*33 : e.deltaY;
+      const mag = Math.max(50, Math.min(180, Math.abs(px)));
+      zoomBy(Math.exp(-Math.sign(px)*mag*0.0025));
+    } else userScroll(e.deltaX || e.deltaY);
+  }, { passive:false });
+  view.addEventListener('pointerdown', (e) => {
+    dragging = false; lastPointer = e.clientX;
+    try { e.target.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  view.addEventListener('pointermove', (e) => {
+    if (lastPointer === null) return;
+    const dx = lastPointer - e.clientX; lastPointer = e.clientX;
+    if (Math.abs(dx) > 2) dragging = true;
+    userScroll(dx);
+  });
+  view.addEventListener('pointerup', () => { lastPointer = null; });
+  svg.addEventListener('click', (e) => {
+    if (dragging) return;
+    const rect = svg.getBoundingClientRect();
+    const tx = (parseFloat((svg.style.transform.match(/-?[\d.]+/) || [0])[0])) || 0;
+    const svgX = e.clientX - rect.left - tx;
+    for (const L of layouts){
+      if (svgX >= L.xStart && svgX <= L.xStart + L.width){
+        if (L.isCurrent) onSeekCb(((svgX - L.xStart)/pxPerSec)*1000);
+        break;
+      }
+    }
+  });
+  $('efm-zoom-in').addEventListener('click', () => zoomBy(1.4));
+  $('efm-zoom-out').addEventListener('click', () => zoomBy(1/1.4));
+
+  let onSeekCb = () => {};
+  return {
+    frame, markLayoutDirty: () => { layoutDirty = true; },
+    setLeap: (from, to) => { leap = { from, to, at: performance.now() }; },
+    onSeek: (cb) => { onSeekCb = cb; },
+    resetView: () => { userOffset = 0; isFollowing = true; isSnapping = false; },
+  };
+})();
+
+Timeline.onSeek((ms) => {
+  const idx = nearestBeatIndex(JD.beats, ms/1000);
+  Engine.seekToBeat(idx);
+  S.positionMs = ms;
+});
+
+// ── FlowChart (ported from FlowChart.tsx) ──────────────────────────────────
+const FlowChart = (function(){
+  const NODE_R = 32, REPULSION = 6000, SPRING_K = 0.0016, REST_LEN = 220, DAMPING = 0.96;
+  const TURBULENCE = 0.04, FLOW_PERIOD = 19, FLOW_DEPTH = 0.22, CURSOR_REPEL = 1400, CURSOR_R = 140;
+  const MIN_SCALE = 0.1, MAX_SCALE = 4.0, PARALLAX = 0.13, ZOOM_PARALLAX = 0.45;
+  const canvas = $('efm-graph-canvas');
+  const ctx = canvas.getContext('2d');
+  let nodes = [], edges = [], chain = [];
+  let cam = { x:0, y:0, scale:1 }, bg = { x:0, y:0, scale:1 }, nodeWander = { x:0, y:0 };
+  let mouse = { x:-9999, y:-9999 }, hoveredId = null;
+  let drag = null, dragHist = [], pan = null, dashOffset = 0;
+  const imgCache = new Map();
+
+  function preload(url){
+    if (!url || imgCache.has(url)) return;
+    const img = new Image(); img.crossOrigin = 'anonymous';
+    img.onload = () => imgCache.set(url, img); img.src = url;
+  }
+  function setData(tracks, edgs, colorMap){
+    edges = edgs.slice().sort((a,b) => b.score-a.score).slice(0, 120);
+    for (const t of tracks) preload(t.albumArt);
+    const W = Math.max(canvas.clientWidth, 800), H = Math.max(canvas.clientHeight, 400);
+    const total = Math.max(tracks.length, 1);
+    const cols = Math.max(1, Math.ceil(Math.sqrt(total*(W/H))));
+    const rows = Math.max(1, Math.ceil(total/cols));
+    const cellW = W/(cols+1), cellH = H/(rows+1);
+    for (let i = 0; i < tracks.length; i++){
+      const track = tracks[i];
+      if (nodes.find(n => n.id === track.id)) continue;
+      const col = i%cols, row = Math.floor(i/cols);
+      nodes.push({ id:track.id, track, color: colorMap.get(track.id) || '#666',
+        x: cellW*(col+1) + (Math.random()-0.5)*cellW*0.3, y: cellH*(row+1) + (Math.random()-0.5)*cellH*0.3,
+        vx:0, vy:0, pinned:false, isActive:false, isCurrent:false });
+    }
+  }
+  function updateChain(){
+    const activeIds = new Set(S.past.map(e => e.track.id).concat(S.current ? [S.current.track.id] : [], S.future.map(e => e.track.id)));
+    chain = S.past.slice().reverse().map(e => e.track.id).concat(S.current ? [S.current.track.id] : [], S.future.map(e => e.track.id));
+    for (const n of nodes){ n.isActive = activeIds.has(n.id); n.isCurrent = n.id === (S.current ? S.current.track.id : ''); }
+  }
+  function resize(){
+    const w = Math.floor(canvas.clientWidth), h = Math.floor(canvas.clientHeight);
+    if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)){ canvas.width = w; canvas.height = h; }
+  }
+  function toWorld(sx, sy){ return { x:(sx - cam.x - nodeWander.x)/cam.scale, y:(sy - cam.y - nodeWander.y)/cam.scale }; }
+  function nodeAt(wx, wy){
+    for (const n of nodes){
+      const r = n.isCurrent ? NODE_R+5 : n.isActive ? NODE_R+2 : NODE_R;
+      const dx = n.x-wx, dy = n.y-wy;
+      if (dx*dx + dy*dy < (r+8)*(r+8)) return n;
+    }
+    return null;
+  }
+  function roundRect(x, y, w, h, r){
+    ctx.moveTo(x+r, y); ctx.lineTo(x+w-r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
+    ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+    ctx.lineTo(x+r, y+h); ctx.arcTo(x, y+h, x, y+h-r, r);
+    ctx.lineTo(x, y+r); ctx.arcTo(x, y, x+r, y, r);
+  }
+  function frame(){
+    resize();
+    const W = canvas.width, H = canvas.height;
+    if (W === 0 || H === 0) return;
+    const cx = W/2, cy = H/2;
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    for (let i = 0; i < nodes.length; i++){
+      if (nodes[i].pinned) continue;
+      for (let j = i+1; j < nodes.length; j++){
+        const dx = nodes[j].x-nodes[i].x, dy = nodes[j].y-nodes[i].y;
+        const d = Math.sqrt(dx*dx+dy*dy) || 0.1;
+        const f = REPULSION/(d*d), fx = f*dx/d, fy = f*dy/d;
+        nodes[i].vx -= fx; nodes[i].vy -= fy;
+        if (!nodes[j].pinned){ nodes[j].vx += fx; nodes[j].vy += fy; }
+      }
+    }
+    const tSec = Date.now()/1000, flowW = (2*Math.PI)/FLOW_PERIOD;
+    for (let k = 0; k < edges.length; k++){
+      const e = edges[k], a = nodeMap.get(e.trackIdA), b = nodeMap.get(e.trackIdB);
+      if (!a || !b) continue;
+      const dx = b.x-a.x, dy = b.y-a.y, d = Math.sqrt(dx*dx+dy*dy) || 1;
+      const phase = k*0.6 + e.score*3.1;
+      const flow = 1 + Math.sin(tSec*flowW + phase)*FLOW_DEPTH;
+      const rest = REST_LEN*(1.0 - e.score*0.5)*flow;
+      const f = SPRING_K*(d-rest)*(0.4 + e.score*1.6), fx = f*dx/d, fy = f*dy/d;
+      if (!a.pinned){ a.vx += fx; a.vy += fy; }
+      if (!b.pinned){ b.vx -= fx; b.vy -= fy; }
+    }
+    const mx = mouse.x, my = mouse.y;
+    for (const n of nodes){
+      if (n.pinned) continue;
+      if (n.id !== hoveredId){
+        const dx = n.x-mx, dy = n.y-my, d = Math.sqrt(dx*dx+dy*dy) || 1;
+        if (d < CURSOR_R){ const f = CURSOR_REPEL/(d*d); n.vx += f*dx/d; n.vy += f*dy/d; }
+      }
+      n.vx += (cx-n.x)*0.00012; n.vy += (cy-n.y)*0.00012;
+      n.vx += (Math.random()-0.5)*TURBULENCE; n.vy += (Math.random()-0.5)*TURBULENCE;
+      n.vx *= DAMPING; n.vy *= DAMPING; n.x += n.vx; n.y += n.vy;
+    }
+    dashOffset = (dashOffset + 0.35)%22;
+    ctx.clearRect(0, 0, W, H);
+    // grid
+    {
+      const BASE = 52, SP = BASE*bg.scale, WANDER = 32, t = Date.now()/1000;
+      const wx = Math.sin(t*((2*Math.PI)/17))*WANDER, wy = Math.cos(t*((2*Math.PI)/21))*WANDER;
+      const gx = (((bg.x+wx)%SP)+SP)%SP, gy = (((bg.y+wy)%SP)+SP)%SP;
+      nodeWander = { x: wx*0.5, y: wy*0.5 };
+      ctx.beginPath(); ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth = 0.7;
+      for (let x = gx-SP; x < W+SP; x += SP){ ctx.moveTo(x,0); ctx.lineTo(x,H); }
+      for (let y = gy-SP; y < H+SP; y += SP){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      for (let x = gx-SP; x < W+SP; x += SP) for (let y = gy-SP; y < H+SP; y += SP){ ctx.beginPath(); ctx.arc(x,y,1.1,0,Math.PI*2); ctx.fill(); }
+    }
+    ctx.save();
+    ctx.setTransform(cam.scale, 0, 0, cam.scale, cam.x + nodeWander.x, cam.y + nodeWander.y);
+    const sortedEdgs = edges.slice().sort((a,b) => a.score-b.score);
+    for (const e of sortedEdgs){
+      const a = nodeMap.get(e.trackIdA), b = nodeMap.get(e.trackIdB);
+      if (!a || !b) continue;
+      const idxA = chain.indexOf(e.trackIdA), idxB = chain.indexOf(e.trackIdB);
+      const isChain = idxA !== -1 && idxB !== -1 && Math.abs(idxA-idxB) === 1;
+      const emx = (a.x+b.x)/2, emy = (a.y+b.y)/2, edx = b.x-a.x, edy = b.y-a.y;
+      const elen = Math.sqrt(edx*edx+edy*edy) || 1;
+      const cpx = emx - (edy/elen)*elen*0.1, cpy = emy + (edx/elen)*elen*0.1;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(cpx, cpy, b.x, b.y);
+      if (isChain){
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2.0/cam.scale;
+        ctx.setLineDash([8,5]); ctx.lineDashOffset = -dashOffset;
+      } else {
+        const opacity = Math.max(0.06, e.score*0.7), lw = (0.5 + e.score*3.0)/cam.scale, isStrong = e.score >= 0.65;
+        ctx.strokeStyle = 'rgba(255,255,255,'+opacity+')'; ctx.lineWidth = lw;
+        if (isStrong){ ctx.setLineDash([9,5]); ctx.lineDashOffset = -dashOffset*e.score; }
+        else { ctx.setLineDash([2,10]); ctx.lineDashOffset = 0; }
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    const now = Date.now(), pulse = 0.5 + 0.5*Math.sin(now/380);
+    for (const n of nodes){
+      const r = n.isCurrent ? NODE_R+5 : n.isActive ? NODE_R+2 : NODE_R;
+      const isHov = hoveredId === n.id;
+      if (n.isActive || isHov){
+        const gR = r + (n.isCurrent ? 10+pulse*5 : isHov ? 8 : 5);
+        const g = ctx.createRadialGradient(n.x, n.y, r*0.5, n.x, n.y, gR);
+        g.addColorStop(0, n.color + (n.isCurrent ? '60' : '38')); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath(); ctx.arc(n.x, n.y, gR, 0, Math.PI*2); ctx.fillStyle = g; ctx.fill();
+      }
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2); ctx.fillStyle = '#000'; ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.arc(n.x, n.y, r-1.5, 0, Math.PI*2); ctx.clip();
+      const img = imgCache.get(n.track.albumArt);
+      if (img){ ctx.globalAlpha = n.isActive ? 0.6 : isHov ? 0.45 : 0.22; ctx.drawImage(img, n.x-r+1.5, n.y-r+1.5, (r-1.5)*2, (r-1.5)*2); }
+      else { ctx.fillStyle = n.color + (n.isActive ? '50' : '1c'); ctx.fillRect(n.x-r, n.y-r, r*2, r*2); }
+      ctx.globalAlpha = 1; ctx.restore();
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+      ctx.strokeStyle = n.isCurrent ? n.color : n.isActive ? 'rgba(255,255,255,0.65)' : isHov ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.13)';
+      ctx.lineWidth = n.isCurrent ? 2 : 1; ctx.stroke();
+      if (n.isCurrent){
+        ctx.beginPath(); ctx.arc(n.x, n.y, r+7+pulse*6, 0, Math.PI*2);
+        const alpha = Math.round(pulse*90+15).toString(16).padStart(2,'0');
+        ctx.strokeStyle = n.color + alpha; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,255,255,'+(n.isActive||isHov ? 0.92 : 0.3)+')';
+      ctx.font = (n.isCurrent ? 700 : 400) + ' 6.5px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(n.track.name.toUpperCase().slice(0,9), n.x, n.y);
+    }
+    ctx.restore();
+    const hovNode = hoveredId ? nodes.find(n => n.id === hoveredId) : null;
+    if (hovNode){
+      const sx = cam.x + nodeWander.x + hovNode.x*cam.scale, sy = cam.y + nodeWander.y + hovNode.y*cam.scale;
+      const r = hovNode.isCurrent ? NODE_R+5 : hovNode.isActive ? NODE_R+2 : NODE_R;
+      const label = hovNode.track.name + '  ·  ' + (hovNode.track.artists[0] || '');
+      ctx.font = '400 9.5px "JetBrains Mono", monospace';
+      const tw = ctx.measureText(label).width;
+      const tx = Math.max(tw/2+10, Math.min(W-tw/2-10, sx)), ty = sy - r*cam.scale - 22;
+      ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.beginPath(); roundRect(tx-tw/2-7, ty-12, tw+14, 17, 3); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 0.75; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, tx, ty-3);
+    }
+  }
+  function screenXY(e){ const rect = canvas.getBoundingClientRect(); return { sx: e.clientX-rect.left, sy: e.clientY-rect.top }; }
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect(), sx = e.clientX-rect.left, sy = e.clientY-rect.top;
+    const factor = e.deltaY < 0 ? 1.09 : 0.92;
+    const ns = Math.max(MIN_SCALE, Math.min(MAX_SCALE, cam.scale*factor)), sf = ns/cam.scale;
+    cam.x = sx - sf*(sx-cam.x); cam.y = sy - sf*(sy-cam.y); cam.scale = ns;
+    const nbs = 1 + (ns-1)*ZOOM_PARALLAX, sfb = nbs/bg.scale;
+    bg.x = sx - sfb*(sx-bg.x); bg.y = sy - sfb*(sy-bg.y); bg.scale = nbs;
+  }, { passive:false });
+  canvas.addEventListener('mousedown', (e) => {
+    const p = screenXY(e), w = toWorld(p.sx, p.sy), node = nodeAt(w.x, w.y);
+    if (node){ node.pinned = true; drag = { id:node.id, ox:w.x-node.x, oy:w.y-node.y }; dragHist = [{ x:w.x, y:w.y, t:Date.now() }]; }
+    else pan = { sx:p.sx, sy:p.sy, cx:cam.x, cy:cam.y, bx:bg.x, by:bg.y };
+  });
+  canvas.addEventListener('mousemove', (e) => {
+    const p = screenXY(e), w = toWorld(p.sx, p.sy);
+    mouse = { x:w.x, y:w.y };
+    if (drag){
+      const node = nodes.find(n => n.id === drag.id);
+      if (node){ node.x = w.x-drag.ox; node.y = w.y-drag.oy; node.vx = 0; node.vy = 0; }
+      dragHist.push({ x:w.x, y:w.y, t:Date.now() }); if (dragHist.length > 8) dragHist.shift();
+      canvas.style.cursor = 'grabbing';
+    } else if (pan){
+      const dx = p.sx-pan.sx, dy = p.sy-pan.sy;
+      cam.x = pan.cx+dx; cam.y = pan.cy+dy; bg.x = pan.bx+dx*PARALLAX; bg.y = pan.by+dy*PARALLAX;
+      canvas.style.cursor = 'grabbing';
+    } else {
+      const hov = nodeAt(w.x, w.y); hoveredId = hov ? hov.id : null;
+      canvas.style.cursor = hov ? 'grab' : 'default';
+    }
+  });
+  function up(){
+    if (drag){
+      const node = nodes.find(n => n.id === drag.id);
+      if (node){
+        if (dragHist.length >= 2){
+          const a = dragHist[0], b = dragHist[dragHist.length-1], dt = Math.max(0.016, (b.t-a.t)/1000);
+          node.vx = ((b.x-a.x)/dt)*0.016*0.65; node.vy = ((b.y-a.y)/dt)*0.016*0.65;
+        }
+        node.pinned = false;
+      }
+      drag = null; dragHist = [];
+    }
+    pan = null;
+  }
+  canvas.addEventListener('mouseup', up);
+  canvas.addEventListener('mouseleave', () => { mouse = { x:-9999, y:-9999 }; hoveredId = null; canvas.style.cursor = 'default'; up(); });
+  return { setData, updateChain, frame };
+})();
+
+// ── Main RAF loop ───────────────────────────────────────────────────────────
+function rafTick(){
+  if (S.started && !S.transitioning && Engine.isPlaying()) S.positionMs = Engine.getPositionSec()*1000;
+  elTime.textContent = fmtTime(S.positionMs) + ' / ' + fmtTime(S.durationMs);
+  Timeline.frame();
+  FlowChart.frame();
+  FlowChart.updateChain();
+  requestAnimationFrame(rafTick);
+}
+
+// ── GlitchTitle on the ETERNAL FM label (ported from GlitchTitle.tsx) ───────
+(function(){
+  const el = $('efm-brand');
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const PRIMARY = "'JetBrains Mono', monospace", FALLBACK = "'Courier New', monospace";
+  function tick(){
+    const flicker = Math.random() < 0.2;
+    el.style.fontFamily = flicker ? FALLBACK : PRIMARY;
+    setTimeout(tick, flicker ? 35 + Math.random()*70 : 500 + Math.random()*900);
+  }
+  tick();
+})();
+
+// ── Wiring ──────────────────────────────────────────────────────────────────
+function setDial(v){ S.dialValue = v; if (S.queue) S.queue.setDial(v); }
+Dial.init({
+  onChange: (v) => setDial(v),
+  onToggle: async () => {
+    if (!S.started){ start(); return; }
+    if (S.isPlaying){ Engine.pause(); S.isPlaying = false; }
+    else { await Engine.resume(); S.isPlaying = Engine.isPlaying(); }
+    Dial.rerender(); renderNow();
+  },
+});
+$('efm-back').addEventListener('click', doBack);
+$('efm-fwd').addEventListener('click', doAdvance);
+$('efm-brand').addEventListener('click', () => {
+  Engine.stop(); S.isPlaying = false; S.started = false;
+  elOverlay.classList.remove('efm-hidden'); elOverlay.classList.remove('busy');
+  elOverlayLbl.textContent = 'TAP TO START'; renderNow(); Dial.rerender();
+});
+
+// build the queue immediately so the timeline + graph preview before playback
+function build(){
+  S.tracks = getDemoTracks();
+  S.edges = buildStructuralEdges(S.tracks);
+  const colorMap = new Map(S.tracks.map(t => [t.id, t.color]));
+  S.queue = new EternalQueue(S.tracks, S.edges, refreshWindow);
+  S.queue.setDial(S.dialValue);
+  S.queue.start();
+  refreshWindow();
+  FlowChart.setData(S.tracks, S.edges, colorMap);
+  // warm the first track in the background so tap-to-start is quick
+  if (S.current) preloadTrack(S.current.track, S.current.analysis && S.current.analysis.features)
+    .then(pre => { if (pre.waveform) attachWaveform(S.current.track.id, pre.waveform); }).catch(() => {});
+  requestAnimationFrame(rafTick);
+}
+
+let starting = false;
+async function start(){
+  if (starting || S.started) return;
+  starting = true;
+  elOverlay.classList.add('busy');
+  elOverlayLbl.textContent = 'DECODING…';
+  await Engine.unlock();
+  S.started = true;
+  await loadCurrent();
+  preloadWindow();
+  elOverlay.classList.add('efm-hidden');
+  elOverlay.classList.remove('busy');
+  Dial.rerender(); renderNow();
+  starting = false;
+}
+elOverlay.addEventListener('click', start);
+
+build();
+})();
+</script>
+</body>
+</html>
