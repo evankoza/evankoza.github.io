@@ -526,9 +526,10 @@
     opacity: .9;
     text-shadow: 0 1px 8px rgba(0,0,0,.25);
   }
-  /* landscape tiles are only one row tall — drop the name so the number
-     doesn't crowd, and let the strip read cleanly */
-  .tile.l .tile-label { display: none; }
+  /* landscape tiles are short but wide — tighten the number/label stack so
+     both fit cleanly in the one-row strip instead of dropping the name */
+  .tile.l .tile-inner { gap: 2px; }
+  .tile.l .num { font-size: clamp(1.4rem, 2.6vw, 2.2rem); }
   .tile:hover,
   .tile:focus-visible {
     transform: translateY(-5px) scale(1.014);
@@ -1539,15 +1540,15 @@
         photos: [],
       },
       {
-        label: "Portrait Tuner",
-        title: "Portrait / ASCII Tuner",
-        lead: "The live control panel behind the compile-style hero — drag the sliders to retune the name curves, the pulsing banner, and the ASCII field.",
-        description: "A full snapshot of the homepage hero wired to a live tuning panel: sliders for the Lissajous name, the pulsing/glitch KOZA banner, and the drifting monospace field behind everything. It’s the seed for a planned “make your own” toy so visitors can compile their own portrait.",
-        objective: "Expose every magic number behind the hero so the look could be dialed in by eye instead of by edit-and-reload — and lay the groundwork for a visitor-facing version.",
-        stack: ["HTML Canvas", "Vanilla JS", "Image sampling"],
+        label: "Make Your Own",
+        title: "Make Your Own — Compile Studio",
+        lead: "The compile-style hero handed to you: drop in your own photos, paste in your own curves, and dial every knob — all in the browser.",
+        description: "The visitor-facing version of the portrait tuner. The ASCII portrait defaults to my head-spin frames, but you can upload your own images and remove any; the Lissajous name starts as EVAN but you can add, remove, or paste in whole curve sets; the KOZA banner can be swapped for your own wordmark or hidden. Every magic number from the hero is exposed as a live slider, and nothing leaves your machine — it all runs client-side.",
+        objective: "Turn the homepage hero from a fixed showpiece into a toy anyone can remix into their own compile-style portrait.",
+        stack: ["HTML Canvas", "Vanilla JS", "Image sampling", "FileReader"],
         links: [
-          { label: "Launch demo", href: "experiments/portrait-tuner.html" },
-          { label: "Source", href: "https://github.com/evankoza/evankoza.github.io/blob/main/experiments/portrait-tuner.html" },
+          { label: "Launch demo", href: "experiments/make-your-own.html" },
+          { label: "Source", href: "https://github.com/evankoza/evankoza.github.io/blob/main/experiments/make-your-own.html" },
         ],
         photos: [],
       },

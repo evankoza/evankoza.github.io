@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<!--
+  MAKE YOUR OWN — compile-style portrait studio
+  A visitor-facing toy grown from portrait-tuner.html (the seed). The same
+  rendering engine (Lissajous name curves + pulsing/glitch banner + ASCII
+  portrait mosaic) but everything is now editable live:
+    • CURVES  — add / remove / paste your own; per-curve a, b, phase, colour, mirror
+    • IMAGES  — the spinning ASCII portrait defaults to Evan's frames; upload
+                your own and remove any (drag your face into the compiler)
+    • BANNER  — swap the KOZA wordmark for your own image, or hide it
+    • every magic number from the tuner exposed as a slider
+  Asset paths use ../ so it runs from /experiments. No build step, no deps.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Make Your Own — compile studio</title>
+<link rel="preload" as="image" href="../assets/portrait/img0.jpeg" />
+<style>
+  :root {
+    --bg: #ECEAE3;
+    --ink: #1c1b18;
+    --pumpkin: #C95000;
+    --pumpkin-bright: #F2622E;
+    --ink-muted: rgba(28, 27, 24, 0.58);
+    --ink-faint: rgba(28, 27, 24, 0.40);
+    --line: rgba(28, 27, 24, 0.14);
+    --paper: #F4F2EB;
+    --mono: ui-monospace, Menlo, Consolas, "Courier New", monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--pumpkin);
+  }
+  .eyebrow .prompt { color: var(--ink-faint); }
+
+  /* ── page header ──────────────────────────────────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 22px clamp(16px, 3vw, 36px) 10px;
+  }
+  .topbar h1 {
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .topbar .sub {
+    color: var(--ink-muted);
+    font-size: 0.92rem;
+    margin-top: 6px;
+    max-width: 60ch;
+  }
+  .topbar .links { display: flex; gap: 10px; flex-shrink: 0; }
+  .topbar a.nav {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    text-decoration: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 14px;
+    background: var(--paper);
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .topbar a.nav:hover { color: var(--pumpkin); border-color: var(--pumpkin); }
+
+  /* ── layout: stage (sticky) + control panels ──────────────── */
+  .studio {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 8px clamp(16px, 3vw, 36px) 80px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+    gap: clamp(20px, 2.5vw, 40px);
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .studio { grid-template-columns: 1fr; }
+  }
+
+  .stage-wrap { position: sticky; top: 16px; }
+  @media (max-width: 900px) { .stage-wrap { position: static; } }
+
+  /* the compositing surface — portrait behind, banner over it, curves on top.
+     overflow clips the over-scaled portrait/banner bleed like the homepage hero */
+  .stage {
+    position: relative;
+    width: 100%;
+    height: clamp(440px, 66vh, 700px);
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .hero {
+    position: relative;
+    width: 100%;
+    padding: 0 6%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .portrait {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, calc(-50% + var(--peye, 0px)));
+    z-index: 0;
+    pointer-events: none;
+    user-select: none;
+  }
+  .banner {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, calc(-50% + var(--by, 0px))) scale(var(--bscale, 1));
+    width: auto;
+    max-width: none;
+    z-index: 1;
+    pointer-events: none;
+    user-select: none;
+    image-rendering: pixelated;
+  }
+  .curves {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    width: 100%;
+    transform: translateY(var(--ey, 0px)) scale(var(--escale, 1));
+    transform-origin: center;
+  }
+  .cell { position: relative; aspect-ratio: 1 / 1; cursor: pointer; }
+  .cell canvas { width: 100%; height: 100%; display: block; }
+  /* selected curve gets a faint halo so you can see which row you're editing */
+  .cell.sel::after {
+    content: "";
+    position: absolute; inset: 6%;
+    border-radius: 12px;
+    background: rgba(201, 80, 0, 0.08);
+    pointer-events: none;
+  }
+
+  .stage-hint {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    text-align: center;
+  }
+
+  /* ── control panels ───────────────────────────────────────── */
+  .panels { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+  .panel {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--paper);
+    overflow: hidden;
+  }
+  .panel > h2 {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding: 13px 16px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel > h2 .caret { transition: transform .15s ease; color: var(--pumpkin); }
+  .panel.collapsed > h2 .caret { transform: rotate(-90deg); }
+  .panel > h2 .count {
+    margin-left: auto;
+    font-weight: 400;
+    color: var(--ink-faint);
+    letter-spacing: 0.06em;
+    text-transform: none;
+  }
+  .panel-body { padding: 4px 16px 16px; }
+  .panel.collapsed .panel-body { display: none; }
+
+  /* slider rows */
+  .row {
+    display: grid;
+    grid-template-columns: 88px 1fr 52px;
+    align-items: center;
+    gap: 10px;
+    margin: 9px 0;
+  }
+  .row .lbl { font-size: 11.5px; font-weight: 600; color: var(--ink-muted); }
+  .row input[type="range"] { width: 100%; accent-color: var(--pumpkin); }
+  .row .val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    text-align: right;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* buttons */
+  .btn {
+    font: inherit;
+    font-size: 13px;
+    border: 1px solid var(--line);
+    background: var(--bg);
+    color: var(--ink);
+    border-radius: 9px;
+    padding: 8px 13px;
+    cursor: pointer;
+    transition: .12s;
+  }
+  .btn:hover { border-color: var(--pumpkin); color: var(--pumpkin); }
+  .btn.primary { background: var(--pumpkin); border-color: var(--pumpkin); color: #fff; }
+  .btn.primary:hover { background: var(--pumpkin-bright); color: #fff; }
+  .btn.sm { padding: 5px 9px; font-size: 12px; }
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+
+  /* curve editor list */
+  .curve {
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    padding: 10px 12px;
+    margin: 10px 0;
+    background: var(--bg);
+  }
+  .curve.sel { border-color: var(--pumpkin); box-shadow: 0 0 0 1px var(--pumpkin); }
+  .curve-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 8px;
+  }
+  .curve-head .dot { width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; }
+  .curve-head .name { font-size: 13px; font-weight: 600; }
+  .curve-head .spacer { flex: 1; }
+  .curve-head input[type="color"] {
+    width: 30px; height: 26px; padding: 0; border: 1px solid var(--line);
+    border-radius: 7px; background: none; cursor: pointer;
+  }
+  .curve-head .x {
+    width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line);
+    background: var(--paper); color: var(--ink-muted); cursor: pointer; font-size: 15px; line-height: 1;
+  }
+  .curve-head .x:hover { background: var(--pumpkin); color: #fff; border-color: var(--pumpkin); }
+  .curve .row { grid-template-columns: 70px 1fr 38px; margin: 6px 0; }
+  .curve .mir {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--ink-muted); cursor: pointer; margin-top: 4px;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 70px;
+    resize: vertical;
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--bg);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 8px 10px;
+    line-height: 1.5;
+  }
+  .hint { font-size: 11.5px; color: var(--ink-faint); line-height: 1.45; margin: 8px 0; }
+  .hint code { font-family: var(--mono); color: var(--ink-muted); }
+
+  /* image / frame manager */
+  .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+  .thumb {
+    position: relative;
+    width: 58px; height: 58px;
+    border-radius: 9px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb .x {
+    position: absolute; top: 2px; right: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: none; background: rgba(20,18,15,.66); color: #fff;
+    font-size: 12px; line-height: 1; cursor: pointer;
+    display: grid; place-items: center;
+  }
+  .thumb .x:hover { background: var(--pumpkin); }
+  .thumb.banner-thumb { width: 92px; }
+  .empty { font-size: 12px; color: var(--ink-faint); font-style: italic; padding: 6px 0; }
+
+  /* hidden file inputs trigger via labels/buttons */
+  input[type="file"] { display: none; }
+  label.btn { display: inline-block; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <span class="eyebrow"><span class="prompt">~ $</span> ./compile --yours</span>
+      <h1>Make Your Own</h1>
+      <p class="sub">
+        The compile-style hero from the homepage, handed to you. Drop in your own photos,
+        paste in your own curves, and dial every knob. Everything runs in your browser —
+        nothing is uploaded anywhere.
+      </p>
+    </div>
+    <nav class="links">
+      <a class="nav" href="../index.html">← Portfolio</a>
+      <a class="nav" href="lissajous-toy.html">Lissajous toy</a>
+    </nav>
+  </header>
+
+  <main class="studio">
+    <!-- the live composition -->
+    <div class="stage-wrap">
+      <div class="stage" id="stage">
+        <div class="hero">
+          <canvas class="portrait" id="portrait" aria-label="ASCII portrait"></canvas>
+          <canvas class="banner" id="banner" width="1739" height="605" aria-label="banner"></canvas>
+          <section class="curves" id="curves" aria-label="curves"></section>
+        </div>
+      </div>
+      <p class="stage-hint">hover a curve to spin it · click to select &amp; edit</p>
+    </div>
+
+    <!-- the controls -->
+    <div class="panels">
+
+      <!-- CURVES ------------------------------------------------ -->
+      <section class="panel" id="panel-curves">
+        <h2><span class="caret">▾</span> Curves <span class="count" id="curve-count"></span></h2>
+        <div class="panel-body">
+          <div id="curve-list"></div>
+          <div class="btnrow">
+            <button class="btn primary sm" id="add-curve">+ Add curve</button>
+            <button class="btn sm" id="rand-curves">Randomize all</button>
+            <button class="btn sm" id="reset-curves">Reset to EVAN</button>
+          </div>
+          <p class="hint" style="margin-top:14px">
+            Paste curves — one per line as <code>a, b, phase[, #color][, mirror]</code>.
+            <code>a</code>/<code>b</code> are the frequency ratio (1–9), <code>phase</code> is
+            0–2, <code>mirror</code> is <code>1</code> to flip horizontally.
+          </p>
+          <textarea id="curve-paste" spellcheck="false" placeholder="4, 1, 0.55, #C95000
+3, 6, 0.73
+4, 6, 0.82
+1, 3, 0.31, #C95000, 1"></textarea>
+          <div class="btnrow">
+            <button class="btn sm" id="load-paste">Load pasted</button>
+            <button class="btn sm" id="copy-curves">Copy current</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- IMAGES (portrait frames) ------------------------------ -->
+      <section class="panel" id="panel-images">
+        <h2><span class="caret">▾</span> Portrait images <span class="count" id="frame-count"></span></h2>
+        <div class="panel-body">
+          <p class="hint">
+            The ASCII portrait spins through these frames. Defaults to my head-spin set —
+            add your own and remove any. (Several similar shots from different angles read as a
+            spinning head; a single image just pulses in place.)
+          </p>
+          <div class="thumbs" id="frame-thumbs"></div>
+          <div class="btnrow">
+            <label class="btn primary sm" for="frame-file">+ Add image(s)</label>
+            <input type="file" id="frame-file" accept="image/*" multiple />
+            <button class="btn sm" id="reset-frames">Reset to mine</button>
+            <button class="btn sm" id="clear-frames">Remove all</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- BANNER ------------------------------------------------ -->
+      <section class="panel" id="panel-banner">
+        <h2><span class="caret">▾</span> Banner</h2>
+        <div class="panel-body">
+          <p class="hint">
+            The pulsing, glitching wordmark laid over the portrait. Swap in your own
+            image (a transparent PNG wordmark works best) or hide it entirely.
+          </p>
+          <div class="thumbs" id="banner-thumb"></div>
+          <div class="btnrow">
+            <label class="btn primary sm" for="banner-file">Replace image</label>
+            <input type="file" id="banner-file" accept="image/*" />
+            <button class="btn sm" id="reset-banner">Reset to KOZA</button>
+            <label class="mir" style="margin-left:4px">
+              <input type="checkbox" id="banner-hide" /> hide banner
+            </label>
+          </div>
+          <div id="banner-sliders" style="margin-top:6px"></div>
+        </div>
+      </section>
+
+      <!-- CURVE MOTION ------------------------------------------ -->
+      <section class="panel collapsed" id="panel-motion">
+        <h2><span class="caret">▾</span> Curve motion &amp; layout</h2>
+        <div class="panel-body" id="motion-sliders"></div>
+      </section>
+
+      <!-- PORTRAIT LOOK ----------------------------------------- -->
+      <section class="panel collapsed" id="panel-portrait">
+        <h2><span class="caret">▾</span> Portrait look</h2>
+        <div class="panel-body" id="portrait-sliders"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+  (() => {
+    "use strict";
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+    // ── tunable parameters (every knob the homepage hero exposes) ──────────
+    const cfg = {
+      // curve motion / layout
+      stroke: 18, strokeResp: 0.5, pixel: 8, ease: 0.02, spinTurns: 0.5,
+      wobbleAmp: 0.01, wobbleSpd: 4.0, evanScale: 0.92, evanY: -96,
+      // banner
+      bannerMult: 1.5, bannerScale: 0.82, bannerY: -96,
+      bannerPixelMin: 7, bannerPixelMax: 9, bannerPulse: 0.3,
+      glitchRipples: 2.5, glitchAmp: 2, bannerHidden: false,
+      // portrait
+      pCrop: 0.62, pChar: 11, pCharStart: 46, pCharSpeed: 34,
+      pSpin: 700, pCut: 154, pGamma: 1.0, pScanMin: 3, pScanMax: 8,
+      pSize: 540, pEye: -48,
+    };
+    const SAMPLES = 700, PAD = 0.16, PHASE_SCALE = Math.PI;
+    const STROKE_REF_W = 275, GLITCH_SPD = 2.0, GLITCH_STRIP = 3;
+
+    // a clean spin needs the phase displaced by a WHOLE multiple of 2π (per the
+    // hero engine) so the figure returns to the exact point it started.
+    const spinTurns = (a) => Math.max(1, Math.round(a * cfg.spinTurns));
+
+    // ── default curve set: the EVAN letters ────────────────────────────────
+    const PUMPKIN = "#C95000";
+    const DEFAULT_CURVES = [
+      { a: 4, b: 1, delta: 0.55, color: PUMPKIN, mx: 1 },
+      { a: 3, b: 6, delta: 0.73, color: PUMPKIN, mx: 1 },
+      { a: 4, b: 6, delta: 0.82, color: PUMPKIN, mx: 1 },
+      { a: 1, b: 3, delta: 0.31, color: PUMPKIN, mx: -1 },
+    ];
+    let curves = DEFAULT_CURVES.map((c) => Object.assign({}, c));
+    let selected = -1;
+
+    const curvesEl = document.getElementById("curves");
+    const stageEl = document.getElementById("stage");
+    let state = [];   // per-curve render objects (canvas + buffers + phase)
+
+    // (re)build the curve canvases from the `curves` array
+    function buildCurves() {
+      // tear down old canvases
+      curvesEl.innerHTML = "";
+      curvesEl.style.gridTemplateColumns = `repeat(${Math.max(1, curves.length)}, 1fr)`;
+      curvesEl.style.setProperty("--escale", cfg.evanScale);
+      curvesEl.style.setProperty("--ey", cfg.evanY + "px");
+
+      state = curves.map((cfgC, i) => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.dataset.index = String(i);
+        curvesEl.appendChild(cell);
+
+        const canvas = document.createElement("canvas");
+        cell.appendChild(canvas);
+        const ctx = canvas.getContext("2d");
+        const src = document.createElement("canvas");
+        const low = document.createElement("canvas");
+
+        // hover → one-shot full spin; click → select for editing
+        cell.addEventListener("pointerenter", () => {
+          state[i].phase -= 2 * Math.PI * spinTurns(state[i].cfg.a);
+        });
+        cell.addEventListener("click", () => selectCurve(i));
+
+        const goal = cfgC.delta * PHASE_SCALE;
+        return {
+          cell, canvas, ctx, cfg: cfgC,
+          src, srcCtx: src.getContext("2d"),
+          low, lowCtx: low.getContext("2d"),
+          goal,
+          phase: goal - 2 * Math.PI * spinTurns(cfgC.a),
+          wobOff: i * 1.7, w: 0, h: 0,
+        };
+      });
+      resizeCurves();
+      markSelected();
+    }
+
+    function resizeCurves() {
+      for (const s of state) {
+        s.w = s.cell.offsetWidth;
+        s.h = s.cell.offsetHeight;
+        if (!s.w || !s.h) continue;
+        s.canvas.width = Math.round(s.w * dpr);
+        s.canvas.height = Math.round(s.h * dpr);
+        s.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        s.src.width = s.canvas.width;
+        s.src.height = s.canvas.height;
+      }
+      // lock banner height to a multiple of one curve cell's height
+      if (state[0] && state[0].h) bannerCanvas.style.height = (cfg.bannerMult * state[0].h) + "px";
+      bannerCanvas.style.setProperty("--bscale", cfg.bannerScale);
+      bannerCanvas.style.setProperty("--by", cfg.bannerY + "px");
+    }
+
+    function drawCurve(s, phaseOverride) {
+      const { srcCtx, cfg: cc, w, h } = s;
+      if (!w || !h) return;
+      srcCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      srcCtx.clearRect(0, 0, w, h);
+      const cx = w / 2, cy = h / 2;
+      const A = (w / 2) * (1 - PAD);
+      const B = (h / 2) * (1 - PAD);
+      const delta = (phaseOverride == null) ? s.phase : phaseOverride;
+      srcCtx.beginPath();
+      for (let i = 0; i <= SAMPLES; i++) {
+        const t = (i / SAMPLES) * Math.PI * 2;
+        const x = cx + (cc.mx || 1) * A * Math.sin(cc.a * t + delta);
+        const y = cy + B * Math.sin(cc.b * t);
+        if (i === 0) srcCtx.moveTo(x, y); else srcCtx.lineTo(x, y);
+      }
+      srcCtx.strokeStyle = cc.color;
+      const sizeFactor = 1 - cfg.strokeResp + cfg.strokeResp * (w / STROKE_REF_W);
+      srcCtx.lineWidth = Math.max(0.5, cfg.stroke * sizeFactor);
+      srcCtx.lineJoin = "round";
+      srcCtx.lineCap = "round";
+      srcCtx.stroke();
+
+      const vctx = s.ctx;
+      const W = s.canvas.width, H = s.canvas.height;
+      vctx.setTransform(1, 0, 0, 1, 0, 0);
+      vctx.clearRect(0, 0, W, H);
+      if (cfg.pixel <= 1) {
+        vctx.imageSmoothingEnabled = true;
+        vctx.drawImage(s.src, 0, 0);
+      } else {
+        const lowW = Math.max(1, Math.round(w / cfg.pixel));
+        const lowH = Math.max(1, Math.round(h / cfg.pixel));
+        s.low.width = lowW; s.low.height = lowH;
+        s.lowCtx.imageSmoothingEnabled = true;
+        s.lowCtx.clearRect(0, 0, lowW, lowH);
+        s.lowCtx.drawImage(s.src, 0, 0, W, H, 0, 0, lowW, lowH);
+        vctx.imageSmoothingEnabled = false;
+        vctx.drawImage(s.low, 0, 0, lowW, lowH, 0, 0, W, H);
+      }
+    }
+
+    // ── KOZA banner: pulsing pixelation + CRT sine-ripple glitch ───────────
+    const bannerCanvas = document.getElementById("banner");
+    const bannerCtx = bannerCanvas.getContext("2d");
+    let bannerW = bannerCanvas.width, bannerH = bannerCanvas.height;
+    const bannerLow = document.createElement("canvas");
+    const bannerLowCtx = bannerLow.getContext("2d");
+    const bannerSrc = document.createElement("canvas");
+    bannerSrc.width = bannerW; bannerSrc.height = bannerH;
+    const bannerSrcCtx = bannerSrc.getContext("2d");
+    let bannerImg = new Image();
+    let bannerReady = false;
+
+    function loadBanner(src) {
+      bannerReady = false;
+      const img = new Image();
+      img.onload = () => {
+        bannerImg = img;
+        bannerW = img.naturalWidth; bannerH = img.naturalHeight;
+        bannerCanvas.width = bannerW; bannerCanvas.height = bannerH;
+        bannerSrc.width = bannerW; bannerSrc.height = bannerH;
+        bannerReady = true;
+        resizeCurves();
+        const n = performance.now();
+        drawBanner(bannerPixelAt(n), n);
+      };
+      img.src = src;
+    }
+
+    function drawBanner(pixel, ms) {
+      if (cfg.bannerHidden) { bannerCanvas.style.display = "none"; return; }
+      bannerCanvas.style.display = "";
+      if (!bannerReady) return;
+      bannerSrcCtx.setTransform(1, 0, 0, 1, 0, 0);
+      bannerSrcCtx.clearRect(0, 0, bannerW, bannerH);
+      if (pixel <= 1.05) {
+        bannerSrcCtx.imageSmoothingEnabled = true;
+        bannerSrcCtx.drawImage(bannerImg, 0, 0, bannerW, bannerH);
+      } else {
+        const lowW = Math.max(1, Math.round(bannerW / pixel));
+        const lowH = Math.max(1, Math.round(bannerH / pixel));
+        bannerLow.width = lowW; bannerLow.height = lowH;
+        bannerLowCtx.imageSmoothingEnabled = true;
+        bannerLowCtx.clearRect(0, 0, lowW, lowH);
+        bannerLowCtx.drawImage(bannerImg, 0, 0, lowW, lowH);
+        bannerSrcCtx.imageSmoothingEnabled = false;
+        bannerSrcCtx.drawImage(bannerLow, 0, 0, lowW, lowH, 0, 0, bannerW, bannerH);
+      }
+      bannerCtx.setTransform(1, 0, 0, 1, 0, 0);
+      bannerCtx.clearRect(0, 0, bannerW, bannerH);
+      bannerCtx.imageSmoothingEnabled = false;
+      if (cfg.glitchAmp <= 0.5) {
+        bannerCtx.drawImage(bannerSrc, 0, 0);
+      } else {
+        const t = (ms / 1000) * GLITCH_SPD;
+        const k = cfg.glitchRipples * Math.PI * 2;
+        for (let y = 0; y < bannerH; y += GLITCH_STRIP) {
+          const sh = Math.min(GLITCH_STRIP, bannerH - y);
+          const off = cfg.glitchAmp * Math.sin((y / bannerH) * k - t);
+          bannerCtx.drawImage(bannerSrc, 0, y, bannerW, sh, off, y, bannerW, sh);
+        }
+      }
+    }
+    function bannerPixelAt(ms) {
+      const f = 0.5 - 0.5 * Math.cos((ms / 1000) * cfg.bannerPulse);
+      return cfg.bannerPixelMin + (cfg.bannerPixelMax - cfg.bannerPixelMin) * f;
+    }
+
+    // ── rotating ASCII portrait ────────────────────────────────────────────
+    const DEFAULT_FRAMES = [
+      { f: "img0.jpeg", oy: -0.005 }, { f: "img1.jpeg", oy: 0 },
+      { f: "img2.jpeg", oy: 0 },      { f: "img3.jpeg", oy: 0.03 },
+      { f: "img4.jpeg", oy: 0.025 },  { f: "img5.jpeg", oy: 0.02 },
+      { f: "img6.jpeg", oy: 0 },      { f: "img7.jpeg", oy: 0 },
+    ];
+    const PORTRAIT_DIR = "../assets/portrait/";
+    const PORTRAIT_RAMP = " .'\",:;!i+trxnvczXYUJCLQ0OZmwqpdbkhao#MW&8%B@$";
+    const PORTRAIT_COLOR = "#F2622E";
+    const PORTRAIT_SCAN_COLOR = "rgba(120,131,143,0.9)";
+    const P_CROP_R = 0.05, P_CROP_L = 0.02;
+
+    // frames: { img, oy, src } — `src` kept so we can rebuild thumbnails
+    let frames = [];
+    let pIdx = 0, pLastSwitch = 0, pSpinning = true, pScan = 4;
+    let pCharEff = null, pCharIntroT0 = 0;
+
+    function loadDefaultFrames() {
+      frames = DEFAULT_FRAMES.map((p) => {
+        const im = new Image();
+        const src = encodeURI(PORTRAIT_DIR + p.f);
+        im.src = src;
+        return { img: im, oy: p.oy, src };
+      });
+      pIdx = 0; pLastSwitch = 0;
+      restartCharIntro();
+    }
+    function addFrameFromData(dataURL) {
+      const im = new Image();
+      im.onload = () => renderPortrait();
+      im.src = dataURL;
+      frames.push({ img: im, oy: 0, src: dataURL });
+    }
+
+    const portraitCanvas = document.getElementById("portrait");
+    const portraitCtx = portraitCanvas.getContext("2d");
+    const pSample = document.createElement("canvas");
+    const pSampleCtx = pSample.getContext("2d", { willReadFrequently: true });
+
+    const pickScan = () => {
+      const lo = Math.min(cfg.pScanMin, cfg.pScanMax);
+      const hi = Math.max(cfg.pScanMin, cfg.pScanMax);
+      pScan = lo + Math.floor(Math.random() * (hi - lo + 1));
+    };
+    pickScan();
+
+    function layoutPortrait() {
+      portraitCanvas.style.width = cfg.pSize + "px";
+      portraitCanvas.style.height = cfg.pSize + "px";
+      portraitCanvas.style.setProperty("--peye", cfg.pEye + "px");
+      portraitCanvas.width = Math.round(cfg.pSize * dpr);
+      portraitCanvas.height = Math.round(cfg.pSize * dpr);
+    }
+
+    function renderPortrait() {
+      const ctx = portraitCtx;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cfg.pSize, cfg.pSize);
+      const frame = frames[pIdx];
+      if (!frame) return;
+      const img = frame.img;
+      if (!img || !img.complete || !img.naturalWidth) return;
+
+      const charH = (pCharEff != null) ? pCharEff : cfg.pChar, charW = charH * 0.6;
+      const cols = Math.max(1, Math.floor(cfg.pSize / charW));
+      const rows = Math.max(1, Math.floor(cfg.pSize / charH));
+
+      pSample.width = cols; pSample.height = rows;
+      pSampleCtx.imageSmoothingEnabled = true;
+      pSampleCtx.clearRect(0, 0, cols, rows);
+      const sw = img.naturalWidth * cfg.pCrop;
+      const sh = img.naturalHeight * cfg.pCrop;
+      const sx = (img.naturalWidth - sw) / 2 - img.naturalWidth * P_CROP_R + img.naturalWidth * P_CROP_L;
+      const sy = (img.naturalHeight - sh) / 2 + img.naturalHeight * (frame.oy || 0);
+      pSampleCtx.drawImage(img, sx, sy, sw, sh, 0, 0, cols, rows);
+      const data = pSampleCtx.getImageData(0, 0, cols, rows).data;
+
+      ctx.font = charH + "px ui-monospace, Menlo, Consolas, 'Courier New', monospace";
+      ctx.textBaseline = "top";
+      const N = PORTRAIT_RAMP.length;
+      for (let r = 0; r < rows; r++) {
+        ctx.fillStyle = (pScan > 0 && r % pScan === 0) ? PORTRAIT_SCAN_COLOR : PORTRAIT_COLOR;
+        const y = r * charH;
+        for (let c = 0; c < cols; c++) {
+          const i = (r * cols + c) * 4;
+          const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          if (lum >= cfg.pCut) continue;
+          const t = Math.pow((cfg.pCut - lum) / cfg.pCut, cfg.pGamma);
+          const ch = PORTRAIT_RAMP[Math.min(N - 1, Math.floor(t * N))];
+          if (ch === " ") continue;
+          ctx.fillText(ch, c * charW, y);
+        }
+      }
+    }
+
+    function restartCharIntro() {
+      pCharEff = (cfg.pCharStart > cfg.pChar && cfg.pCharSpeed > 0) ? cfg.pCharStart : null;
+      pCharIntroT0 = 0;
+    }
+
+    // ── the animation loop ──────────────────────────────────────────────────
+    let running = false, onScreen = true;
+    function startStep() { if (!running) { running = true; requestAnimationFrame(step); } }
+    function stopStep() { running = false; }
+    function step(ms) {
+      const now = ms || performance.now();
+      const wt = (now / 1000) * cfg.wobbleSpd;
+      for (const s of state) {
+        const rem = s.goal - s.phase;
+        let d = rem * cfg.ease + Math.sign(rem) * 0.018 * spinTurns(s.cfg.a);
+        if (Math.abs(d) > Math.abs(rem)) d = rem;
+        s.phase += d;
+        const wob = cfg.wobbleAmp * s.cfg.a * Math.sin(wt + s.wobOff);
+        drawCurve(s, s.phase + wob);
+      }
+      drawBanner(bannerPixelAt(now), now);
+
+      const frame = frames[pIdx];
+      if (frame && frame.img.complete && frame.img.naturalWidth) {
+        if (pCharEff != null) {
+          if (pCharIntroT0 === 0) pCharIntroT0 = now;
+          const v = cfg.pCharStart - cfg.pCharSpeed * ((now - pCharIntroT0) / 1000);
+          if (v <= cfg.pChar) pCharEff = null; else pCharEff = v;
+          renderPortrait();
+        }
+        if (pLastSwitch === 0) {
+          pLastSwitch = now;
+        } else if (pSpinning && frames.length > 1 && now - pLastSwitch >= cfg.pSpin) {
+          pLastSwitch = now;
+          pIdx = (pIdx + 1) % frames.length;
+          pickScan();
+          renderPortrait();
+        }
+      }
+      if (running) requestAnimationFrame(step);
+    }
+
+    // pause when the stage scrolls off-screen or the tab is hidden
+    const io = new IntersectionObserver((e) => {
+      onScreen = e[0].isIntersecting;
+      if (onScreen && !document.hidden) startStep(); else stopStep();
+    }, { threshold: 0 });
+    io.observe(stageEl);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopStep(); else if (onScreen) startStep();
+    });
+    window.addEventListener("resize", () => { resizeCurves(); });
+
+    // ═══ UI ═══════════════════════════════════════════════════════════════
+
+    // collapsible panels
+    document.querySelectorAll(".panel > h2").forEach((h) => {
+      h.addEventListener("click", () => h.parentElement.classList.toggle("collapsed"));
+    });
+
+    // ── curve editor list ──────────────────────────────────────────────────
+    const curveList = document.getElementById("curve-list");
+    const curveCount = document.getElementById("curve-count");
+
+    function selectCurve(i) { selected = i; markSelected(); }
+    function markSelected() {
+      document.querySelectorAll(".cell").forEach((c, i) => c.classList.toggle("sel", i === selected));
+      document.querySelectorAll(".curve").forEach((c, i) => c.classList.toggle("sel", i === selected));
+    }
+
+    function renderCurveList() {
+      curveList.innerHTML = "";
+      curveCount.textContent = curves.length + (curves.length === 1 ? " curve" : " curves");
+      curves.forEach((c, i) => {
+        const box = document.createElement("div");
+        box.className = "curve" + (i === selected ? " sel" : "");
+
+        const head = document.createElement("div");
+        head.className = "curve-head";
+        head.innerHTML =
+          `<span class="dot" style="background:${c.color}"></span>` +
+          `<span class="name">Curve ${i + 1}</span><span class="spacer"></span>`;
+        const color = document.createElement("input");
+        color.type = "color"; color.value = toHex(c.color);
+        color.addEventListener("input", () => {
+          c.color = color.value;
+          head.querySelector(".dot").style.background = c.color;
+        });
+        const x = document.createElement("button");
+        x.className = "x"; x.textContent = "×"; x.title = "Remove curve";
+        x.addEventListener("click", (e) => { e.stopPropagation(); removeCurve(i); });
+        head.append(color, x);
+        box.appendChild(head);
+        box.addEventListener("click", () => selectCurve(i));
+
+        box.appendChild(sliderRow("freq a", c.a, 1, 9, 1, (v) => v.toFixed(0),
+          (v) => { c.a = v; }));
+        box.appendChild(sliderRow("freq b", c.b, 1, 9, 1, (v) => v.toFixed(0),
+          (v) => { c.b = v; }));
+        box.appendChild(sliderRow("phase δ", c.delta, 0, 2, 0.01, (v) => v.toFixed(2),
+          (v) => { const s = state[i]; c.delta = v; if (s) { s.goal = v * PHASE_SCALE; s.phase = s.goal; if (!running) drawCurve(s); } }));
+
+        const mir = document.createElement("label");
+        mir.className = "mir";
+        const cb = document.createElement("input");
+        cb.type = "checkbox"; cb.checked = c.mx === -1;
+        cb.addEventListener("change", () => { c.mx = cb.checked ? -1 : 1; });
+        mir.append(cb, document.createTextNode(" mirror"));
+        box.appendChild(mir);
+
+        curveList.appendChild(box);
+      });
+    }
+
+    // a lightweight slider row used inside curve editors (writes live)
+    function sliderRow(label, value, min, max, stepv, fmt, onInput) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const l = document.createElement("span"); l.className = "lbl"; l.textContent = label;
+      const s = document.createElement("input");
+      s.type = "range"; s.min = min; s.max = max; s.step = stepv; s.value = value;
+      const v = document.createElement("span"); v.className = "val"; v.textContent = fmt(value);
+      s.addEventListener("input", () => {
+        const val = parseFloat(s.value);
+        v.textContent = fmt(val);
+        onInput(val);
+      });
+      row.append(l, s, v);
+      return row;
+    }
+
+    function toHex(c) {
+      if (/^#([0-9a-f]{6})$/i.test(c)) return c;
+      const g = document.createElement("canvas").getContext("2d");
+      g.fillStyle = c; return g.fillStyle;
+    }
+
+    function addCurve(def) {
+      curves.push(def || { a: 1 + ((Math.random() * 6) | 0), b: 1 + ((Math.random() * 6) | 0),
+        delta: Math.round(Math.random() * 200) / 100, color: PUMPKIN, mx: 1 });
+      selected = curves.length - 1;
+      buildCurves(); renderCurveList();
+    }
+    function removeCurve(i) {
+      curves.splice(i, 1);
+      if (selected >= curves.length) selected = curves.length - 1;
+      buildCurves(); renderCurveList();
+    }
+
+    document.getElementById("add-curve").addEventListener("click", () => addCurve());
+    document.getElementById("reset-curves").addEventListener("click", () => {
+      curves = DEFAULT_CURVES.map((c) => Object.assign({}, c));
+      selected = -1; buildCurves(); renderCurveList();
+    });
+    document.getElementById("rand-curves").addEventListener("click", () => {
+      curves.forEach((c) => {
+        c.a = 1 + ((Math.random() * 6) | 0);
+        c.b = 1 + ((Math.random() * 6) | 0);
+        c.delta = Math.round(Math.random() * 200) / 100;
+      });
+      buildCurves(); renderCurveList();
+    });
+
+    // paste import: "a, b, delta[, color[, mirror]]" per line
+    document.getElementById("load-paste").addEventListener("click", () => {
+      const txt = document.getElementById("curve-paste").value.trim();
+      if (!txt) return;
+      const parsed = [];
+      txt.split(/[\n;]+/).forEach((line) => {
+        const p = line.split(",").map((s) => s.trim()).filter((s) => s.length);
+        if (p.length < 3) return;
+        const a = Math.max(1, Math.min(9, Math.round(parseFloat(p[0])) || 1));
+        const b = Math.max(1, Math.min(9, Math.round(parseFloat(p[1])) || 1));
+        const delta = isNaN(parseFloat(p[2])) ? 0.5 : parseFloat(p[2]);
+        const color = p[3] && /^#?[0-9a-f]{3,8}$/i.test(p[3])
+          ? (p[3][0] === "#" ? p[3] : "#" + p[3]) : PUMPKIN;
+        const mx = (p[4] && (p[4] === "-1" || /^(1|y|yes|true|mirror)$/i.test(p[4]))) ? -1 : 1;
+        parsed.push({ a, b, delta, color, mx });
+      });
+      if (!parsed.length) { alert("No valid curves found. Use: a, b, phase[, #color][, mirror]"); return; }
+      curves = parsed; selected = -1;
+      buildCurves(); renderCurveList();
+    });
+    document.getElementById("copy-curves").addEventListener("click", async () => {
+      const txt = curves.map((c) =>
+        `${c.a}, ${c.b}, ${c.delta}, ${c.color}${c.mx === -1 ? ", 1" : ""}`).join("\n");
+      const ta = document.getElementById("curve-paste");
+      ta.value = txt;
+      try { await navigator.clipboard.writeText(txt); } catch (_) {}
+      const btn = document.getElementById("copy-curves");
+      const old = btn.textContent; btn.textContent = "Copied ✓";
+      setTimeout(() => (btn.textContent = old), 1200);
+    });
+
+    // ── portrait frame manager ──────────────────────────────────────────────
+    const frameThumbs = document.getElementById("frame-thumbs");
+    const frameCount = document.getElementById("frame-count");
+    function renderFrameThumbs() {
+      frameThumbs.innerHTML = "";
+      frameCount.textContent = frames.length + (frames.length === 1 ? " image" : " images");
+      if (!frames.length) {
+        frameThumbs.innerHTML = '<span class="empty">no images — the portrait is blank</span>';
+        return;
+      }
+      frames.forEach((fr, i) => {
+        const t = document.createElement("div");
+        t.className = "thumb";
+        t.innerHTML = `<img src="${fr.src}" alt="frame ${i + 1}" />`;
+        const x = document.createElement("button");
+        x.className = "x"; x.textContent = "×"; x.title = "Remove";
+        x.addEventListener("click", () => {
+          frames.splice(i, 1);
+          if (pIdx >= frames.length) pIdx = 0;
+          renderPortrait(); renderFrameThumbs();
+        });
+        t.appendChild(x);
+        frameThumbs.appendChild(t);
+      });
+    }
+    document.getElementById("frame-file").addEventListener("change", (e) => {
+      const files = Array.from(e.target.files || []);
+      let pending = files.length;
+      files.forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          addFrameFromData(reader.result);
+          if (--pending === 0) renderFrameThumbs();
+        };
+        reader.readAsDataURL(file);
+      });
+      e.target.value = "";   // allow re-selecting the same file
+    });
+    document.getElementById("reset-frames").addEventListener("click", () => {
+      loadDefaultFrames(); renderPortrait(); renderFrameThumbs();
+    });
+    document.getElementById("clear-frames").addEventListener("click", () => {
+      frames = []; pIdx = 0; renderPortrait(); renderFrameThumbs();
+    });
+
+    // ── banner manager ───────────────────────────────────────────────────────
+    const bannerThumb = document.getElementById("banner-thumb");
+    let bannerSrcURL = "../assets/koza.png";
+    function renderBannerThumb() {
+      bannerThumb.innerHTML = cfg.bannerHidden
+        ? '<span class="empty">banner hidden</span>'
+        : `<div class="thumb banner-thumb"><img src="${bannerSrcURL}" alt="banner" /></div>`;
+    }
+    document.getElementById("banner-file").addEventListener("change", (e) => {
+      const file = (e.target.files || [])[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => { bannerSrcURL = reader.result; loadBanner(bannerSrcURL); renderBannerThumb(); };
+      reader.readAsDataURL(file);
+      e.target.value = "";
+    });
+    document.getElementById("reset-banner").addEventListener("click", () => {
+      bannerSrcURL = "../assets/koza.png"; loadBanner(bannerSrcURL); renderBannerThumb();
+    });
+    document.getElementById("banner-hide").addEventListener("change", (e) => {
+      cfg.bannerHidden = e.target.checked;
+      const n = performance.now(); drawBanner(bannerPixelAt(n), n);
+      renderBannerThumb();
+    });
+
+    // ── global slider panels (generated from specs) ──────────────────────────
+    // spec: [key, label, min, max, step, fmt, opts]
+    //   opts.relayout → re-run layoutPortrait; opts.resize → re-run resizeCurves;
+    //   opts.css → [prop, suffix] live-set a CSS var on a target el; opts.redraw → fn
+    function makeSlider(container, key, label, min, max, stepv, fmt, opts) {
+      opts = opts || {};
+      const row = document.createElement("div");
+      row.className = "row";
+      const l = document.createElement("span"); l.className = "lbl"; l.textContent = label;
+      const s = document.createElement("input");
+      s.type = "range"; s.min = min; s.max = max; s.step = stepv; s.value = cfg[key];
+      const v = document.createElement("span"); v.className = "val"; v.textContent = fmt(cfg[key]);
+      s.addEventListener("input", () => {
+        cfg[key] = parseFloat(s.value);
+        v.textContent = fmt(cfg[key]);
+        if (opts.css) opts.css[0].style.setProperty(opts.css[1], cfg[key] + (opts.css[2] || ""));
+        if (opts.relayout) layoutPortrait();
+        if (opts.resize) resizeCurves();
+        if (opts.render) renderPortrait();
+        if (opts.redraw) opts.redraw();
+        if (!running && opts.redrawCurves) for (const st of state) drawCurve(st);
+      });
+      row.append(l, s, v);
+      container.appendChild(row);
+    }
+
+    const fix = (n) => (v) => v.toFixed(n);
+    const px = (v) => (v | 0) + "px";
+    const mult = (v) => v.toFixed(2) + "×";
+    const redrawBanner = () => { if (!running) { const n = performance.now(); drawBanner(bannerPixelAt(n), n); } };
+
+    // banner sliders
+    const bs = document.getElementById("banner-sliders");
+    makeSlider(bs, "bannerMult", "size", 0.4, 4, 0.1, (v) => v.toFixed(1) + "×", { resize: true });
+    makeSlider(bs, "bannerScale", "scale", 0.2, 3, 0.05, mult, { css: [bannerCanvas, "--bscale"] });
+    makeSlider(bs, "bannerY", "offset Y", -400, 400, 2, px, { css: [bannerCanvas, "--by", "px"] });
+    makeSlider(bs, "bannerPixelMin", "pixel min", 1, 24, 1, (v) => v | 0, { redraw: redrawBanner });
+    makeSlider(bs, "bannerPixelMax", "pixel max", 1, 48, 1, (v) => v | 0, { redraw: redrawBanner });
+    makeSlider(bs, "bannerPulse", "pulse spd", 0.1, 3, 0.1, fix(1));
+    makeSlider(bs, "glitchRipples", "glitch freq", 0, 24, 0.5, fix(1), { redraw: redrawBanner });
+    makeSlider(bs, "glitchAmp", "glitch amp", 0, 60, 1, (v) => v | 0, { redraw: redrawBanner });
+
+    // curve motion / layout sliders
+    const ms = document.getElementById("motion-sliders");
+    makeSlider(ms, "ease", "settle spd", 0.002, 0.08, 0.002, fix(3));
+    makeSlider(ms, "spinTurns", "spin", 0.1, 2, 0.1, fix(1));
+    makeSlider(ms, "stroke", "thickness", 0.5, 80, 0.5, fix(1), { redrawCurves: true });
+    makeSlider(ms, "strokeResp", "thick resp", 0, 3, 0.05, mult, { redrawCurves: true });
+    makeSlider(ms, "pixel", "pixelate", 1, 24, 1, (v) => v <= 1 ? "off" : (v | 0), { redrawCurves: true });
+    makeSlider(ms, "evanScale", "group scale", 0.3, 3, 0.05, mult, { css: [curvesEl, "--escale"] });
+    makeSlider(ms, "evanY", "group Y", -400, 400, 2, px, { css: [curvesEl, "--ey", "px"] });
+    makeSlider(ms, "wobbleAmp", "wobble", 0, 0.3, 0.01, fix(2));
+    makeSlider(ms, "wobbleSpd", "wobble spd", 0.1, 4, 0.1, fix(1));
+
+    // portrait look sliders
+    const ps = document.getElementById("portrait-sliders");
+    makeSlider(ps, "pChar", "char size", 4, 24, 0.5, fix(1), { render: true });
+    makeSlider(ps, "pCharStart", "intro size", 10, 100, 0.5, fix(1), { redraw: () => { restartCharIntro(); renderPortrait(); } });
+    makeSlider(ps, "pCharSpeed", "intro spd", 0, 120, 1, (v) => (v | 0) + "/s", { redraw: () => { restartCharIntro(); renderPortrait(); } });
+    makeSlider(ps, "pSpin", "spin hold", 80, 2000, 10, (v) => (v | 0) + "ms");
+    makeSlider(ps, "pCut", "bright cut", 60, 255, 1, (v) => v | 0, { render: true });
+    makeSlider(ps, "pGamma", "contrast γ", 0.4, 2.5, 0.05, fix(2), { render: true });
+    makeSlider(ps, "pScanMin", "scan min", 0, 12, 1, (v) => v === 0 ? "off" : (v | 0), { redraw: () => { pickScan(); renderPortrait(); } });
+    makeSlider(ps, "pScanMax", "scan max", 0, 16, 1, (v) => v === 0 ? "off" : (v | 0), { redraw: () => { pickScan(); renderPortrait(); } });
+    makeSlider(ps, "pCrop", "crop", 0.3, 1, 0.02, (v) => v >= 0.999 ? "full" : v.toFixed(2), { render: true });
+    makeSlider(ps, "pSize", "resolution", 300, 1200, 10, px, { relayout: true, render: true });
+    makeSlider(ps, "pEye", "eye nudge", -300, 300, 2, px, { relayout: true });
+
+    // ── boot ──────────────────────────────────────────────────────────────────
+    loadDefaultFrames();
+    layoutPortrait();
+    buildCurves();
+    renderCurveList();
+    renderFrameThumbs();
+    renderBannerThumb();
+    loadBanner(bannerSrcURL);
+    // render the portrait once each default frame arrives
+    frames.forEach((fr) => {
+      if (fr.img.complete) renderPortrait();
+      else fr.img.addEventListener("load", () => renderPortrait(), { once: true });
+    });
+    startStep();
+
+    // dev hook: freeze on the resting state for still captures
+    window.__freeze = () => {
+      running = false; pSpinning = false; pCharEff = null;
+      for (const s of state) { s.phase = s.goal; drawCurve(s); }
+      const n = performance.now(); drawBanner(bannerPixelAt(n), n); renderPortrait();
+    };
+    window.__unfreeze = () => { pSpinning = true; pLastSwitch = performance.now(); startStep(); };
+  })();
+  </script>
+</body>
+</html>

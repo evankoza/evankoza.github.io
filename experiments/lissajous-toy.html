@@ -23,12 +23,13 @@
     padding:18px;margin:14px 0;position:relative}
   #big{display:block;width:100%;height:auto;cursor:pointer;touch-action:manipulation}
   .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
-  .wordwrap{display:flex;align-items:center;gap:8px;flex:1;min-width:160px}
-  input[type=text]{background:#fff;border:1px solid var(--line);color:var(--ink);
-    border-radius:9px;padding:8px 11px;font:inherit;letter-spacing:2px;text-transform:uppercase;width:100%}
+  .countlbl{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;min-width:62px}
+  .spacer{flex:1;min-width:0}
   button{background:#fff;border:1px solid var(--line);color:var(--ink);border-radius:9px;
     padding:8px 13px;font:inherit;cursor:pointer;transition:.12s}
   button:hover{border-color:#bdb6a6;background:#fbfaf7}
+  button:disabled{opacity:.4;cursor:default}
+  button:disabled:hover{border-color:var(--line);background:#fff}
   button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   button.primary:hover{background:#3a78ff}
 
@@ -60,15 +61,16 @@
 <div class="page">
   <div class="head">
     <h1>Lissajous Toy</h1>
-    <p>Click a letter to reshape its curve</p>
+    <p>Add curves, then click one to reshape it</p>
   </div>
 
   <div class="stage">
     <canvas id="big" width="900" height="260"></canvas>
     <div class="toolbar">
-      <div class="wordwrap">
-        <input type="text" id="word" value="COMPILE" maxlength="16" autocomplete="off" spellcheck="false" />
-      </div>
+      <button id="remove">&minus; Remove</button>
+      <button id="add">+ Add curve</button>
+      <span id="countLbl" class="countlbl">4 curves</span>
+      <span class="spacer"></span>
       <button id="play" class="primary">Pause</button>
       <button id="rand">Randomize</button>
       <button id="reset">Reset</button>
@@ -87,7 +89,7 @@
     <div class="controls">
       <div class="who">
         <span class="dot" id="selDot"></span>
-        <h2 id="selName">C</h2>
+        <h2 id="selName">Curve 1</h2>
         <span>this letter's curve</span>
       </div>
       <div class="ctl"><span class="name">Frequency a</span><input type="range" id="ca" min="1" max="7" step="1"><span class="val" id="caV">1</span></div>
@@ -99,7 +101,7 @@
       <div class="mini">
         <button id="randOne">Surprise this one</button>
       </div>
-      <p class="tiphint">Tip: hit Pause to freeze a shape, then tweak. The big wordmark gently drifts and rotates while playing.</p>
+      <p class="tiphint">Tip: while playing, the curves gently drift and rotate. Hit Pause to freeze every curve at exactly its Phase&nbsp;&delta; and Rotate values — that's how you pin a static pose like the ones on the homepage.</p>
     </div>
   </div>
 </div>
@@ -115,20 +117,21 @@
   var big=document.getElementById("big"), bctx=big.getContext("2d");
   var one=document.getElementById("one"), octx=one.getContext("2d");
 
-  var state={ word:"COMPILE", playing:true, sel:0, phase:0, letters:[] };
+  var MINC=1, MAXC=12, DEFAULTC=4;
+  var state={ count:DEFAULTC, playing:true, sel:0, phase:0, letters:[] };
 
-  function makeLetter(ch,i){
+  function makeLetter(i){
     var r=ratioBank[i%ratioBank.length];
-    var step=BW/Math.max(1,state.word.length);
-    return { ch:ch, a:r[0], b:r[1], delta:0.5, rot:0, scale:1.0,
+    var step=BW/Math.max(1,state.count);
+    return { a:r[0], b:r[1], delta:0.5, rot:0, scale:1.0,
              color:palette[i%palette.length], x:step*(i+0.5), y:BH/2 };
   }
   function rebuild(prev){
-    var chars=state.word.split(""), out=[];
-    var step=BW/Math.max(1,chars.length);
-    for(var i=0;i<chars.length;i++){
-      if(prev&&prev[i]&&prev[i].ch===chars[i]){ prev[i].x=step*(i+0.5); out.push(prev[i]); }
-      else out.push(makeLetter(chars[i],i));
+    var out=[];
+    var step=BW/Math.max(1,state.count);
+    for(var i=0;i<state.count;i++){
+      if(prev&&prev[i]){ prev[i].x=step*(i+0.5); out.push(prev[i]); }
+      else out.push(makeLetter(i));
     }
     state.letters=out;
     if(state.sel>=out.length) state.sel=Math.max(0,out.length-1);
@@ -165,10 +168,11 @@
   function drawBig(){
     bctx.clearRect(0,0,BW,BH);
     var amp=Math.min(46, (BW/Math.max(1,state.letters.length))*0.36);
+    var ph=state.playing? state.phase : 0;
     for(var i=0;i<state.letters.length;i++){
       var L=state.letters[i];
       var driftRot=(L.rot*Math.PI/180)+(state.playing? tNow*0.14 : 0)*(1);
-      var pts=curvePoints(L, state.phase, amp);
+      var pts=curvePoints(L, ph, amp);
       if(i===state.sel){
         bctx.beginPath();
         bctx.arc(L.x,L.y,amp*L.scale+12,0,Math.PI*2);
@@ -184,10 +188,11 @@
     octx.beginPath();octx.moveTo(130,18);octx.lineTo(130,242);
     octx.moveTo(18,130);octx.lineTo(242,130);octx.stroke();
     var L=state.letters[state.sel]; if(!L)return;
-    var pts=curvePoints(L, state.phase, 92);
+    var ph=state.playing? state.phase : 0;
+    var pts=curvePoints(L, ph, 92);
     strokePath(octx,pts,130,130,L.rot*Math.PI/180,L.color,2.5);
     // trace dot
-    var d=state.phase+L.delta*2*Math.PI;
+    var d=ph+L.delta*2*Math.PI;
     var tt=(tNow*0.6)%(Math.PI*2);
     var rx=92*L.scale*Math.sin(L.a*tt+d), ry=92*L.scale*Math.sin(L.b*tt);
     var cos=Math.cos(L.rot*Math.PI/180), sin=Math.sin(L.rot*Math.PI/180);
@@ -225,7 +230,7 @@
   function sel(){ return state.letters[state.sel]; }
   function syncControls(){
     var L=sel(); if(!L)return;
-    C.name.textContent=L.ch===" "?"space":L.ch; C.dot.style.background=L.color;
+    C.name.textContent="Curve "+(state.sel+1); C.dot.style.background=L.color;
     C.a.value=L.a; C.aV.textContent=L.a;
     C.b.value=L.b; C.bV.textContent=L.b;
     C.d.value=Math.round(L.delta*100); C.dV.textContent=L.delta.toFixed(2);
@@ -258,18 +263,31 @@
     L.rot=Math.round((Math.random()*2-1)*60);
     L.scale=0.7+Math.random()*0.5;
   }
-  document.getElementById("reset").onclick=function(){
-    state.word="COMPILE"; document.getElementById("word").value="COMPILE";
-    state.sel=0; state.playing=true; playBtn.textContent="Pause";
-    rebuild(null); syncControls();
+  // ---- add / remove curves ----
+  var addBtn=document.getElementById("add"), remBtn=document.getElementById("remove");
+  var countLbl=document.getElementById("countLbl");
+  function updateCountUI(){
+    countLbl.textContent=state.count+(state.count===1?" curve":" curves");
+    addBtn.disabled=state.count>=MAXC;
+    remBtn.disabled=state.count<=MINC;
+  }
+  addBtn.onclick=function(){
+    if(state.count>=MAXC)return;
+    state.count++; rebuild(state.letters);
+    state.sel=state.count-1; syncControls(); updateCountUI();
   };
-  document.getElementById("word").oninput=function(){
-    state.word=this.value.toUpperCase()||" ";
-    rebuild(state.letters); syncControls();
+  remBtn.onclick=function(){
+    if(state.count<=MINC)return;
+    state.count--; rebuild(state.letters); syncControls(); updateCountUI();
+  };
+
+  document.getElementById("reset").onclick=function(){
+    state.count=DEFAULTC; state.sel=0; state.playing=true; playBtn.textContent="Pause";
+    rebuild(null); syncControls(); updateCountUI();
   };
 
   // ---- init ----
-  rebuild(null); syncControls();
+  rebuild(null); syncControls(); updateCountUI();
   requestAnimationFrame(loop);
 })();
 </script>
