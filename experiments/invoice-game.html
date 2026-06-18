@@ -153,13 +153,19 @@
       0 0 0 3px #b8b0a0,
       0 10px 30px rgba(0,0,0,0.5),
       inset 0 0 40px rgba(255,255,255,0.25);
-    background-repeat: no-repeat;
-    /* align the 240px magnified image to the glass's true center; without this the
-       default padding-box origin pushes it 10px (the border width) down-and-right,
-       so drawn ink appears offset from the cursor tip under the glass */
-    background-origin: border-box;
-    background-position: center;
     overflow: hidden;
+  }
+  /* the zoomed slice is painted straight into this canvas every mousemove.
+     drawing to a live canvas is synchronous, so there is no async image-decode
+     gap between frames — that gap is what made the glass flicker on high-refresh
+     (144Hz) displays when the source was a freshly-generated data: URL background. */
+  #loupe-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    z-index: 1;
   }
   #loupe::before {
     /* glare streak */
@@ -173,6 +179,7 @@
     border-radius: 50%;
     transform: rotate(-25deg);
     pointer-events: none;
+    z-index: 2;
   }
 
   /* receiving scanner (the item feed) — sits just to the right of the invoice, owns the clocks */
@@ -368,7 +375,7 @@
     </div>
   </div>
 
-  <div id="loupe"></div>
+  <div id="loupe"><canvas id="loupe-canvas" width="240" height="240"></canvas></div>
 
   <div id="scanner">
     <div class="scn-bar">
@@ -403,6 +410,7 @@
   const sctx  = sheet.getContext('2d');
   const ictx  = ink.getContext('2d');
   const loupe = document.getElementById('loupe');
+  const loupeCanvas = document.getElementById('loupe-canvas');
   const cornerEl = document.getElementById('corner');
   const cornerBackEl = document.getElementById('corner-back');
 
@@ -600,32 +608,31 @@
     const overPaper = px >= 0 && px <= PAGE_W && py >= 0 && py <= PAGE_H;
 
     if (overPaper && loupeSrc) {
-      // draw zoomed region of the page into the loupe via background canvas
-      loupe.style.backgroundImage = 'url(' + loupeCache(px, py) + ')';
+      // paint the zoomed region straight into the loupe canvas (synchronous,
+      // no data: URL round-trip) so the glass never flickers between frames
+      drawLoupeSlice(px, py);
+      loupeCanvas.style.display = 'block';
       loupe.style.backgroundColor = '#fdfaf2';
     } else {
-      loupe.style.backgroundImage = 'none';
+      loupeCanvas.style.display = 'none';
       loupe.style.backgroundColor = 'rgba(245,241,230,0.55)';
     }
   }
 
-  // render zoomed slice to a small canvas and return data URL
-  const _slice = document.createElement('canvas');
-  _slice.width = 240; _slice.height = 240;
-  const _sctx = _slice.getContext('2d');
-  function loupeCache(px, py) {
+  // render the zoomed slice directly into the visible loupe canvas
+  const _lctx = loupeCanvas.getContext('2d');
+  function drawLoupeSlice(px, py) {
     const f = loupeSrc.width / PAGE_W;          // source pixels per page unit
     const srcSize = (LOUPE_R * 2) / ZOOM;       // page-space region captured
     const sx = (px - srcSize / 2) * f;
     const sy = (py - srcSize / 2) * f;
-    _sctx.clearRect(0, 0, 240, 240);
-    _sctx.imageSmoothingEnabled = true;
-    _sctx.drawImage(
+    _lctx.clearRect(0, 0, 240, 240);
+    _lctx.imageSmoothingEnabled = true;
+    _lctx.drawImage(
       loupeSrc,
       sx, sy, srcSize * f, srcSize * f,
       0, 0, 240, 240
     );
-    return _slice.toDataURL();
   }
 
   window.addEventListener('mousedown', (e) => {
