@@ -14,7 +14,14 @@ Two subjects:
 import math, random
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps, ImageChops
 
-RAMP = " .'\",:;!i+trxnvczXYUJCLQ0OZmwqpdbkhao#MW&8%B@$"
+# Two ramps, light->dark. Flip BLOCK_MODE to test the look.
+#   glyphs : the original code-ish letter/symbol mosaic
+#   blocks : Unicode shade rectangles (light/medium/dark/full) -> reads as solid
+#            tiles at four opacities instead of text
+BLOCK_MODE = True
+RAMP_GLYPHS = " .'\",:;!i+trxnvczXYUJCLQ0OZmwqpdbkhao#MW&8%B@$"
+RAMP_BLOCKS = " ░▒▓█"   # (blank) ░ ▒ ▓ █
+RAMP = RAMP_BLOCKS if BLOCK_MODE else RAMP_GLYPHS
 # Inverted scheme: deep pumpkin field, warm-white glyphs (was the reverse).
 # Field matches --pumpkin (#C95000) — keep .tile.raw background in sync.
 BG_COLOR = (201, 80, 0)     # #C95000  --pumpkin (the tile fills with this too)
@@ -25,7 +32,7 @@ CROP_BOTTOM = 0.20          # EXTRA clear field below the subject (fraction of c
                             # reserved for the bottom title so the art never overlaps it
 CUT = 150                   # lum >= cut -> blank (bg shows through)
 GAMMA = 1.0
-CHAR_H = 32                 # glyph height in px (13 -> 15 -> 19 -> 26 -> 32; bigger = lower-res, legible glyphs)
+CHAR_H = 20                 # glyph height in px (13 -> 15 -> 19 -> 26 -> 32; bigger = lower-res, legible glyphs)
 FONT_PATH = r"C:\Windows\Fonts\consola.ttf"
 
 SS = 3  # supersample factor for the source line art (anti-aliased edges -> ramp falloff)
@@ -55,7 +62,8 @@ def asciify(src_gray, out_path, char_h=CHAR_H):
             ch = RAMP[min(N - 1, int(t * N))]
             if ch == " ":
                 continue
-            d.text((c * char_w, y - char_h * 0.12), ch, font=font, fill=FG_COLOR)
+            dy = 0 if BLOCK_MODE else -char_h * 0.12   # letters need a lift; blocks tile as-is
+            d.text((c * char_w, y + dy), ch, font=font, fill=FG_COLOR)
 
     # crop to the glyph content + a uniform margin so the subject fills the tile
     # (covers otherwise carry a lot of empty field; this normalises subject scale)
