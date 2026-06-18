@@ -2392,8 +2392,13 @@
       };
 
       function resize() {
-        W = canvas.clientWidth; H = canvas.clientHeight;
-        if (!W || !H) return;
+        const w = canvas.clientWidth, h = canvas.clientHeight;
+        if (!w || !h) return;
+        // Mobile URL-bar show/hide fires resize on every pixel of height change.
+        // Bail when nothing actually changed so we don't needlessly reallocate
+        // (and momentarily clear) the canvas on those events.
+        if (w === W && h === H && cols) return;
+        W = w; H = h;
         canvas.width = Math.round(W * dpr);
         canvas.height = Math.round(H * dpr);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -2403,15 +2408,15 @@
         colSpd = new Array(cols).fill(0).map((_, c) => 0.4 + hash(c, 7) * 1.1);
         ctx.font = charPx + "px ui-monospace, Menlo, Consolas, 'Courier New', monospace";
         ctx.textBaseline = "top";
+        // Reallocating the backing store above blanks the canvas. If the field is
+        // paused (e.g. while the page is scrolling and the URL bar is moving on
+        // mobile), the frame loop won't repaint, so paint one static frame here —
+        // otherwise the section flashes white until scrolling settles.
+        if (!running) render(performance.now(), 0);
       }
 
-      function frame(now) {
-        if (!running) return;
-        rafId = requestAnimationFrame(frame);          // keep the loop alive at display rate…
-        const since = now - lastDraw;
-        if (since < FRAME_MS) return;                  // …but only actually repaint ~30×/sec
-        const dt = Math.min(0.05, since / 1000 || 0);
-        lastDraw = now;
+      // draw one frame; dt advances the upward drift (0 = static repaint)
+      function render(now, dt) {
         const t = now / 1000;
         ctx.clearRect(0, 0, W, H);
         ctx.fillStyle = color;
@@ -2432,6 +2437,16 @@
           }
         }
         ctx.globalAlpha = 1;
+      }
+
+      function frame(now) {
+        if (!running) return;
+        rafId = requestAnimationFrame(frame);          // keep the loop alive at display rate…
+        const since = now - lastDraw;
+        if (since < FRAME_MS) return;                  // …but only actually repaint ~30×/sec
+        const dt = Math.min(0.05, since / 1000 || 0);
+        lastDraw = now;
+        render(now, dt);
       }
 
       function start() {
