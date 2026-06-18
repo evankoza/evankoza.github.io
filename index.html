@@ -732,36 +732,17 @@
      fills the crop margins with the tile's own pumpkin background — the padding
      adapts to each tile's shape automatically. */
   .tile.raw .tile-photo { filter: none; object-fit: contain; }
-  .tile.raw { background: var(--pumpkin-bright); }
+  .tile.raw { background: var(--pumpkin); }  /* #C95000 — matches the cover field */
   /* no scrim/overlay on raw tiles — white edge labels sit on the bare pumpkin
      (overrides the .has-photo bottom scrim these tiles would otherwise inherit) */
   .tile.raw::after { background: none; }
-  .tile.raw .num .hash { color: #fff; opacity: 1; }
-  /* tile content: the project number over its name. Tiles cycle through the
-     real projects, so the same name reappears down the wall by design. */
-  /* the number and title sit on the tile EDGES (number in the top-left corner,
-     title along the bottom) rather than stacked in the centre — keeps them off
-     the busy glyph subject in the middle and on the cleaner field at the rim */
+  /* tile content: just the project name along the bottom edge — off the busy glyph
+     subject in the middle. Tiles cycle through the real projects, so the same name
+     reappears down the wall by design. */
   .tile-inner {
     position: absolute;
     inset: 0;
     z-index: 2;
-  }
-  .tile .num {
-    position: absolute;
-    top: clamp(6px, 1.2vw, 12px);
-    left: clamp(9px, 1.4vw, 15px);
-    font-size: clamp(1.7rem, 3.4vw, 3rem);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1;
-    text-shadow: 0 2px 16px rgba(0,0,0,.20);
-  }
-  .tile .num .hash {
-    opacity: .5;
-    font-size: .55em;
-    vertical-align: super;
-    margin-right: .04em;
   }
   .tile-label {
     position: absolute;
@@ -775,8 +756,6 @@
     opacity: .95;
     text-shadow: 0 1px 8px rgba(0,0,0,.25);
   }
-  /* landscape tiles are short but wide — shrink the corner numeral a touch */
-  .tile.l .num { font-size: clamp(1.4rem, 2.6vw, 2.2rem); }
   .tile:hover,
   .tile:focus-visible {
     transform: translateY(-5px) scale(1.014);
@@ -2086,10 +2065,9 @@
       b.className = "tile " + size;
       b.type = "button";
       b.dataset.project = String(pi);
-      const n = String(pi + 1).padStart(2, "0");
       b.setAttribute("aria-label", "Open project: " + proj.title);
       // optional wall image: prefer an explicit `cover`, else the first
-      // screenshot; none → the flat-orange #num/label tile (the `else`).
+      // screenshot; none → the flat-orange label tile (the `else`).
       const cover = proj.cover || (proj.photos && proj.photos[0]) || "";
       if (cover) b.classList.add("has-photo");
       // compile-style covers (pumpkin-on-cream art) skip the duotone + dark scrim
@@ -2099,7 +2077,6 @@
           ? '<img class="tile-photo" src="' + cover + '" alt="" loading="lazy" decoding="async">'
           : "") +
         '<span class="tile-inner">' +
-          '<span class="num"><span class="hash">#</span>' + n + "</span>" +
           '<span class="tile-label">' + proj.label + "</span>" +
         "</span>";
       return b;

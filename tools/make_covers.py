@@ -12,12 +12,17 @@ Two subjects:
   invoice    : a stacked invoice page with a magnifier over the fine print
 """
 import math, random
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps, ImageChops
 
 RAMP = " .'\",:;!i+trxnvczXYUJCLQ0OZmwqpdbkhao#MW&8%B@$"
-# Inverted scheme: bright pumpkin field, warm-white glyphs (was the reverse).
-BG_COLOR = (242, 98, 46)    # #F2622E  --pumpkin-bright  (the tile fills with this too)
-FG_COLOR = (246, 240, 231)  # #F6F0E7  warm near-white glyphs
+# Inverted scheme: deep pumpkin field, warm-white glyphs (was the reverse).
+# Field matches --pumpkin (#C95000) — keep .tile.raw background in sync.
+BG_COLOR = (201, 80, 0)     # #C95000  --pumpkin (the tile fills with this too)
+FG_COLOR = (255, 255, 255)  # pure white glyphs (crisper on the orange than warm off-white)
+CROP_MARGIN = 0.06          # after rendering, crop to the glyph content + this margin
+                            # (fraction of the larger content dim) so subjects fill the tile
+CROP_BOTTOM = 0.20          # EXTRA clear field below the subject (fraction of content height)
+                            # reserved for the bottom title so the art never overlaps it
 CUT = 150                   # lum >= cut -> blank (bg shows through)
 GAMMA = 1.0
 CHAR_H = 32                 # glyph height in px (13 -> 15 -> 19 -> 26 -> 32; bigger = lower-res, legible glyphs)
@@ -51,6 +56,19 @@ def asciify(src_gray, out_path, char_h=CHAR_H):
             if ch == " ":
                 continue
             d.text((c * char_w, y - char_h * 0.12), ch, font=font, fill=FG_COLOR)
+
+    # crop to the glyph content + a uniform margin so the subject fills the tile
+    # (covers otherwise carry a lot of empty field; this normalises subject scale)
+    diff = ImageChops.difference(out, Image.new("RGB", out.size, BG_COLOR)).convert("L")
+    bbox = diff.point(lambda v: 255 if v > 12 else 0).getbbox()
+    if bbox:
+        sub = out.crop(bbox)
+        m = int(round(max(sub.size) * CROP_MARGIN))
+        mb = int(round(sub.height * CROP_BOTTOM))   # extra clear strip for the bottom title
+        framed = Image.new("RGB", (sub.width + 2 * m, sub.height + m + mb), BG_COLOR)
+        framed.paste(sub, (m, m))                   # subject pinned high; clear field below
+        out = framed
+
     out.save(out_path, "WEBP", quality=92, method=6)
     print("wrote", out_path, out.size, f"{cols}x{rows} glyphs")
 
