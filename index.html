@@ -34,7 +34,9 @@
   "alumniOf": { "@type": "CollegeOrUniversity", "name": "Western University" },
   "knowsAbout": ["Software Development", "Data Engineering", "Data Science", "Computer Science"],
   "sameAs": [
-    "https://github.com/evankoza"
+    "https://github.com/evankoza",
+    "https://www.linkedin.com/in/evankoza",
+    "https://x.com/koh_zuh"
   ]
 }
 </script>
@@ -240,6 +242,16 @@
     line-height: 0.95;
     letter-spacing: -0.03em;
     margin-bottom: 12px;
+  }
+  /* off-screen text for crawlers / screen readers, no visual footprint */
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
   .about-role {
     font-family: var(--mono);
@@ -976,7 +988,7 @@
 
       <!-- left: name · contact · education · skills (sticky) -->
       <aside class="about-meta">
-        <h1 class="about-name">EVAN<br>KOZA</h1>
+        <h1 class="about-name">EVAN<br>KOZA<span class="sr-only"> — Software Developer, Computer Science &amp; Data Science</span></h1>
         <p class="about-role">CS &amp; Data Science @ Western University</p>
         <p class="about-tagline">
           Computer Science &amp; Data Science student and working software developer &mdash;

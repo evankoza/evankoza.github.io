@@ -2,22 +2,32 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://evankoza.com/</loc>
+    <lastmod>2026-06-18</lastmod>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/invoice-game.html</loc>
+    <lastmod>2026-06-18</lastmod>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/make-your-own.html</loc>
+    <lastmod>2026-06-18</lastmod>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://evankoza.com/experiments/eternal-fm.html</loc>
+    <lastmod>2026-06-18</lastmod>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/discord-bot-demo.html</loc>
+    <lastmod>2026-06-18</lastmod>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/lissajous-toy.html</loc>
+    <lastmod>2026-06-18</lastmod>
     <priority>0.5</priority>
   </url>
 </urlset>
