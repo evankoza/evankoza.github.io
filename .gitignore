@@ -4,6 +4,10 @@
 # Dependencies — none are committed; the site is zero-dependency
 node_modules/
 
+# Python tooling cruft (tools/make_covers.py etc.)
+__pycache__/
+*.pyc
+
 # OS cruft
 .DS_Store
 Thumbs.db

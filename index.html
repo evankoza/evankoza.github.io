@@ -54,6 +54,8 @@
     --ink-faint: rgba(28, 27, 24, 0.40);
     --line: rgba(28, 27, 24, 0.14);
     --paper: #F4F2EB;        /* card surface, a touch lighter than the canvas */
+    --grid-line: rgba(28, 27, 24, 0.07);   /* faint parallax grid on the canvas */
+    --about-frame-line: rgba(28, 27, 24, 0.22); /* the solid framing line */
     --mono: ui-monospace, Menlo, Consolas, "Courier New", monospace;
     --maxw: 1100px;
   }
@@ -220,13 +222,101 @@
     color: var(--ink-faint);
   }
 
+  /* ── DECIDE divider (projects → about) ──────────────────── */
+  /* Mirrors the hero→projects punchline band: a centered shell-prompt
+     eyebrow over one big italic line. The whole line is a button —
+     tap it and openModal() rolls a random project for you. */
+  .decide-section {
+    padding: clamp(40px, 7vw, 80px) 24px clamp(48px, 8vw, 96px);
+    text-align: center;
+  }
+  .decide-section .eyebrow { display: block; margin-bottom: 14px; }
+  .decide {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.4em;
+    font-family: inherit;
+    font-size: clamp(1.5rem, 4.5vw, 2.6rem);
+    font-style: italic;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+    color: var(--ink);
+    background: none;
+    border: 0;
+    padding: 6px 4px;
+    cursor: pointer;
+    transition: color 0.18s ease;
+  }
+  .decide-go {
+    color: var(--pumpkin);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.25em;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 5px;
+    transition: text-decoration-color 0.18s ease, gap 0.18s ease;
+  }
+  .decide .arrow { transition: transform 0.18s ease; }
+  .decide:hover .decide-go,
+  .decide:focus-visible .decide-go {
+    text-decoration-color: currentColor;
+    gap: 0.4em;
+  }
+  .decide:hover .arrow,
+  .decide:focus-visible .arrow { transform: translateX(3px); }
+  .decide:focus-visible { outline: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .decide:active { transform: scale(0.985); }
+  }
+  .decide-rule {
+    width: min(680px, 80%);
+    height: 1px;
+    margin: clamp(32px, 6vw, 64px) auto 0;
+    background: var(--line);
+  }
+
   /* ── ABOUT ME ───────────────────────────────────────────── */
+  /* full-width stage: the framed resume floats on the paper card while a
+     faint parallaxing grid drifts behind it, showing only in the margins.
+     Mirrors the hero grid on the digits landing page. */
   .about {
+    position: relative;
+    padding: clamp(64px, 10vw, 128px) clamp(20px, 5vw, 72px);
+  }
+  .about::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 46px 46px;
+    /* pin the grid to the viewport so it does NOT scroll 1:1 with the section.
+       JS then drives the small parallax drift via --about-grid-y — this is the
+       only motion, so there's nothing for it to fight against (= no jitter). */
+    background-attachment: fixed;
+    background-position: center var(--about-grid-y, 0px);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
+    z-index: 0;
+    pointer-events: none;
+  }
+  /* the solid framing box — sits on the opaque paper surface so the grid
+     reads only in the surrounding canvas */
+  .about-frame {
+    position: relative;
+    z-index: 1;
     max-width: var(--maxw);
     margin: 0 auto;
-    padding: clamp(64px, 10vw, 128px) 24px;
+    background: var(--paper);
+    border: 1px solid var(--about-frame-line);
+    border-radius: 14px;
+    padding: clamp(28px, 4.5vw, 64px);
   }
-  .about > .eyebrow { display: block; margin-bottom: 14px; }
+  .about-frame > .eyebrow { display: block; margin-bottom: 14px; }
   .about-grid {
     display: grid;
     grid-template-columns: 0.85fr 1.15fr;
@@ -600,6 +690,56 @@
     z-index: 1;
     background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(120,40,0,.20));
   }
+  /* ── photo tiles ───────────────────────────────────────────────
+     When a project supplies an image (proj.cover, else proj.photos[0]),
+     it fills the tile beneath the number/label, remapped to a pumpkin
+     duotone so every screenshot — a light chart or a dark UI — reads as
+     one branded surface. The tint is a cheap GPU CSS-filter chain (NOT an
+     SVG filter graph) on purpose: the wall paints dozens of tiles at once,
+     so we keep each one off an expensive filter layer (same reasoning as
+     the no-mix-blend-mode note above). Tune the look with saturate /
+     hue-rotate / brightness below — higher saturate = more vivid orange,
+     more-negative hue-rotate = redder pumpkin. Projects with no image fall
+     back to the flat-orange #num/label tile automatically. */
+  .tile-photo {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* grayscale → sepia base → push the hue toward a deep #C95000 pumpkin
+       (matches the compile letter colour: darker, more saturated) */
+    filter: grayscale(1) sepia(1) saturate(7.4) hue-rotate(-25deg)
+            brightness(.72) contrast(1.15);
+  }
+  /* deeper base (matches the duotone shadows) shows during image load,
+     and a stronger top→bottom scrim keeps the white label readable over
+     a busy photo instead of the flat tiles' lighter depth gradient */
+  .tile.has-photo { background: #7a2e00; }
+  .tile.has-photo::after {
+    background: linear-gradient(180deg,
+      rgba(30,10,0,.20) 0%, rgba(30,10,0,.10) 38%, rgba(30,10,0,.60) 100%);
+  }
+  /* "raw" covers (coverRaw:true) are already compile-style pumpkin-on-cream art,
+     so they skip the duotone and the dark scrim — and the number/label flip to
+     dark ink with a cream halo so they stay legible over the light artwork. */
+  /* The covers are square icons centred on parchment, but tiles crop to many
+     aspect ratios (square / wide / tall). `cover` would slice the art off; we
+     switch raw covers to `contain` so the browser letterboxes the whole icon
+     and fills the crop margins with the tile's own parchment background — the
+     padding adapts to each tile's shape automatically. */
+  .tile.raw .tile-photo { filter: none; object-fit: contain; }
+  .tile.raw { background: var(--bg); }
+  .tile.raw::after {
+    background: linear-gradient(180deg, transparent 58%, rgba(40,18,0,.10) 100%);
+  }
+  .tile.raw .num,
+  .tile.raw .tile-label {
+    color: var(--ink);
+    text-shadow: 0 0 2px var(--bg), 0 1px 12px var(--bg);
+  }
+  .tile.raw .num .hash { color: var(--pumpkin); opacity: .8; }
   /* tile content: the project number over its name. Tiles cycle through the
      real projects, so the same name reappears down the wall by design. */
   .tile-inner {
@@ -978,10 +1118,25 @@
   </section>
 
 
+  <!-- ══ DECIDE ══════════════════════════════════════════════
+       Playful divider between the work wall and the bio. The line
+       is a button; clicking it opens a random project modal
+       (wired up next to the masonry handler in the script). -->
+  <section class="decide-section">
+    <span class="eyebrow"><span class="prompt">~ $</span> shuf -n 1 ./projects</span>
+    <button type="button" class="decide" id="decide-btn">
+      Paralyzed by choice?
+      <span class="decide-go">let me decide<span class="arrow" aria-hidden="true">&nbsp;&rarr;</span></span>
+    </button>
+    <div class="decide-rule" aria-hidden="true"></div>
+  </section>
+
+
   <!-- ══ ABOUT ME ════════════════════════════════════════════
        Reformatted from the DIGITS media/talk grid: sticky identity
        column on the left, scrolling experience timeline on the right. -->
   <section class="about" id="about">
+   <div class="about-frame">
     <span class="eyebrow"><span class="prompt">~ $</span> whoami</span>
 
     <div class="about-grid">
@@ -1119,6 +1274,7 @@
 
       </div><!-- /about-body -->
     </div><!-- /about-grid -->
+   </div><!-- /about-frame -->
   </section>
 
   <!-- ══ PROJECT MODAL ═══════════════════════════════════════
@@ -1739,6 +1895,33 @@
   })();
   </script>
 
+  <!-- ══ ABOUT: parallax the grid behind the framed resume ═══════
+       Drift the background grid as the section scrolls through the
+       viewport — same idea as the digits landing hero. -->
+  <script>
+  (() => {
+    const about = document.querySelector('.about');
+    if (!about) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // the grid is pinned to the viewport (background-attachment: fixed), so on
+    // its own it's perfectly still while the resume scrolls past — maximum
+    // depth. We then nudge it UP at SPEED× the scroll so it reads as a slow,
+    // far-away layer rather than a frozen backdrop (0 = frozen, 1 = locked to
+    // content). This is the only motion, so it stays smooth.
+    const SPEED = 0.15;
+    let raf = false;
+    function update() {
+      raf = false;
+      const offset = -window.scrollY * SPEED;
+      about.style.setProperty('--about-grid-y', offset.toFixed(1) + 'px');
+    }
+    window.addEventListener('scroll', () => {
+      if (raf) return; raf = true; requestAnimationFrame(update);
+    }, { passive: true });
+    update();
+  })();
+  </script>
+
   <!-- ══ PROJECTS: masonry carousel, drag/scroll, modal, and the two
        flowing monospace character fields (section + modal backdrop) ═══ -->
   <script>
@@ -1759,6 +1942,13 @@
     //                new tab. Omit/empty for a project with no links yet.
     //   • `photos` — optional screenshots (paths under /assets); empty → the
     //                photo strip is hidden for that project.
+    //   • `cover`  — optional wall-tile image (path under /assets). Falls back
+    //                to photos[0]; if neither exists the tile stays flat orange.
+    //                Tiles crop this square/landscape/portrait, so frame the
+    //                key content CENTERED. It's auto-pumpkin-duotoned in CSS.
+    //   • `coverRaw`— set true when the cover is ALREADY compile-style pumpkin-
+    //                on-cream art: skips the duotone + dark scrim, flips the
+    //                #num/label to dark ink. (discord, lissajous, data, headshot)
     const PROJECTS = [
       {
         label: "Invoice Scanner",
@@ -1772,6 +1962,8 @@
           { label: "Source", href: "https://github.com/evankoza/invoice-scanner" },
         ],
         photos: [],
+        cover: "assets/covers/invoice.webp",
+        coverRaw: true,
       },
       {
         label: "Discord Play-Together Bot",
@@ -1786,6 +1978,8 @@
           { label: "Source", href: "https://github.com/evankoza/discord-play-together-bot" },
         ],
         photos: [],
+        cover: "assets/covers/discord.webp",
+        coverRaw: true,
       },
       {
         label: "Data Analysis",
@@ -1798,6 +1992,8 @@
           { label: "View notebook", href: "https://github.com/evankoza/student-performance-analysis/blob/main/analysis.ipynb" },
           { label: "Source", href: "https://github.com/evankoza/student-performance-analysis" },
         ],
+        cover: "assets/covers/data-analysis.webp",
+        coverRaw: true,
         photos: [],
       },
       {
@@ -1812,6 +2008,8 @@
           { label: "Source", href: "https://github.com/evankoza/eternal-fm" },
         ],
         photos: [],
+        cover: "assets/covers/eternal-fm.webp",
+        coverRaw: true,
       },
       {
         label: "Lissajous Toy",
@@ -1825,6 +2023,8 @@
           { label: "Source", href: "https://github.com/evankoza/evankoza.github.io/blob/main/experiments/lissajous-toy.html" },
         ],
         photos: [],
+        cover: "assets/covers/lissajous.webp",
+        coverRaw: true,
       },
       {
         label: "Make Your Own Headshot",
@@ -1838,6 +2038,8 @@
           { label: "Source", href: "https://github.com/evankoza/evankoza.github.io/blob/main/experiments/make-your-own.html" },
         ],
         photos: [],
+        cover: "assets/covers/make-your-own.webp",
+        coverRaw: true,
       },
     ];
 
@@ -1887,7 +2089,16 @@
       b.dataset.project = String(pi);
       const n = String(pi + 1).padStart(2, "0");
       b.setAttribute("aria-label", "Open project: " + proj.title);
+      // optional wall image: prefer an explicit `cover`, else the first
+      // screenshot; none → the flat-orange #num/label tile (the `else`).
+      const cover = proj.cover || (proj.photos && proj.photos[0]) || "";
+      if (cover) b.classList.add("has-photo");
+      // compile-style covers (pumpkin-on-cream art) skip the duotone + dark scrim
+      if (cover && proj.coverRaw) b.classList.add("raw");
       b.innerHTML =
+        (cover
+          ? '<img class="tile-photo" src="' + cover + '" alt="" loading="lazy" decoding="async">'
+          : "") +
         '<span class="tile-inner">' +
           '<span class="num"><span class="hash">#</span>' + n + "</span>" +
           '<span class="tile-label">' + proj.label + "</span>" +
@@ -2131,6 +2342,16 @@
     masonry.addEventListener("click", (e) => {
       const tile = e.target.closest(".tile");
       if (tile) openModal(parseInt(tile.dataset.project, 10) || 0);
+    });
+    // "paralyzed by choice?" — roll a random project, avoiding an immediate
+    // repeat so back-to-back clicks always land somewhere new.
+    let lastDecide = -1;
+    document.getElementById("decide-btn").addEventListener("click", () => {
+      let pi = Math.floor(Math.random() * PROJECTS.length);
+      if (PROJECTS.length > 1 && pi === lastDecide)
+        pi = (pi + 1) % PROJECTS.length;
+      lastDecide = pi;
+      openModal(pi);
     });
     document.getElementById("modal-close").addEventListener("click", closeModal);
     root.addEventListener("pointerdown", (e) => {
