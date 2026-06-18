@@ -2,7 +2,7 @@
 
 My personal portfolio — a single, hand-built site with **no framework and no build step**: just vanilla HTML, CSS, and JavaScript.
 
-**Live:** https://evankoza.github.io
+**Live:** https://evankoza.com
 
 ## Demos
 
