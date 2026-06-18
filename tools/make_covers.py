@@ -25,7 +25,15 @@ RAMP = RAMP_BLOCKS if BLOCK_MODE else RAMP_GLYPHS
 # Inverted scheme: deep pumpkin field, warm-white glyphs (was the reverse).
 # Field matches --pumpkin (#C95000) — keep .tile.raw background in sync.
 BG_COLOR = (201, 80, 0)     # #C95000  --pumpkin (the tile fills with this too)
-FG_COLOR = (255, 255, 255)  # pure white glyphs (crisper on the orange than warm off-white)
+# The cover is baked as the SUBJECT on a TRANSPARENT field. In the page it is used
+# purely as a CSS MASK (only its alpha matters, colour is irrelevant): the tile fills
+# with solid pumpkin and the subject is SUBTRACTED to punch a real transparent hole,
+# so the animated projects-bg code field shows through the subject while the orange
+# tile stays solid + connected. `contain` mask sizing means the subject never clips.
+# See `.tile.raw::before` in index.html.
+FG_COLOR = (255, 255, 255)  # neutral white — only the alpha (subject vs field) is read as a mask
+TRANSPARENT_FIELD = True    # subject ink on a transparent field -> used as the knockout mask
+TRANSPARENT_FG = False      # (legacy) punch the subject out as see-through holes instead
 CROP_MARGIN = 0.06          # after rendering, crop to the glyph content + this margin
                             # (fraction of the larger content dim) so subjects fill the tile
 CROP_BOTTOM = 0.20          # EXTRA clear field below the subject (fraction of content height)
@@ -38,8 +46,10 @@ FONT_PATH = r"C:\Windows\Fonts\consola.ttf"
 SS = 3  # supersample factor for the source line art (anti-aliased edges -> ramp falloff)
 
 
-def asciify(src_gray, out_path, char_h=CHAR_H):
-    """src_gray: 'L' image, dark shape on white. Sample -> glyph mosaic -> save webp."""
+def asciify(src_gray, out_path, char_h=CHAR_H, cut=CUT):
+    """src_gray: 'L' image, dark shape on white. Sample -> glyph mosaic -> save webp.
+    `cut`: luminance >= cut samples to blank field (raise it for photos, whose
+    subject mid-tones sit higher than crisp black line art)."""
     W, H = src_gray.size
     char_w = char_h * 0.6
     cols = max(1, int(W / char_w))
@@ -48,32 +58,49 @@ def asciify(src_gray, out_path, char_h=CHAR_H):
     small = src_gray.resize((cols, rows), Image.BILINEAR)
     px = small.load()
 
-    out = Image.new("RGB", (W, H), BG_COLOR)
-    d = ImageDraw.Draw(out)
+    # render the glyphs into an alpha mask (0 = field, 255 = glyph ink). We paint
+    # white through this mask (opaque mode) or invert it into the alpha channel to
+    # punch transparent holes (TRANSPARENT_FG) — either way the glyph coverage and
+    # anti-aliased edges are identical.
+    mask = Image.new("L", (W, H), 0)
+    md = ImageDraw.Draw(mask)
     font = ImageFont.truetype(FONT_PATH, char_h)
     N = len(RAMP)
     for r in range(rows):
         y = r * char_h
         for c in range(cols):
             lum = px[c, r]              # 0=black shape .. 255=white bg
-            if lum >= CUT:
+            if lum >= cut:
                 continue
-            t = ((CUT - lum) / CUT) ** GAMMA
+            t = ((cut - lum) / cut) ** GAMMA
             ch = RAMP[min(N - 1, int(t * N))]
             if ch == " ":
                 continue
             dy = 0 if BLOCK_MODE else -char_h * 0.12   # letters need a lift; blocks tile as-is
-            d.text((c * char_w, y + dy), ch, font=font, fill=FG_COLOR)
+            md.text((c * char_w, y + dy), ch, font=font, fill=255)
+
+    if TRANSPARENT_FIELD:
+        out = Image.new("RGBA", (W, H), (0, 0, 0, 0))  # transparent field
+        out.paste(FG_COLOR, mask=mask)                 # glyph ink -> cobalt, field see-through
+    elif TRANSPARENT_FG:
+        out = Image.new("RGBA", (W, H), BG_COLOR + (255,))
+        out.putalpha(ImageChops.invert(mask))        # glyph ink -> alpha 0 (see-through)
+    else:
+        out = Image.new("RGB", (W, H), BG_COLOR)
+        out.paste(FG_COLOR, mask=mask)               # glyph ink -> white
 
     # crop to the glyph content + a uniform margin so the subject fills the tile
-    # (covers otherwise carry a lot of empty field; this normalises subject scale)
-    diff = ImageChops.difference(out, Image.new("RGB", out.size, BG_COLOR)).convert("L")
-    bbox = diff.point(lambda v: 255 if v > 12 else 0).getbbox()
+    # (covers otherwise carry a lot of empty field; this normalises subject scale).
+    # the mask's own bbox is exactly the glyph extent — no diff against the field.
+    bbox = mask.getbbox()
     if bbox:
         sub = out.crop(bbox)
         m = int(round(max(sub.size) * CROP_MARGIN))
         mb = int(round(sub.height * CROP_BOTTOM))   # extra clear strip for the bottom title
-        framed = Image.new("RGB", (sub.width + 2 * m, sub.height + m + mb), BG_COLOR)
+        fw, fh = sub.width + 2 * m, sub.height + m + mb
+        rgba = TRANSPARENT_FIELD or TRANSPARENT_FG
+        framed = (Image.new("RGBA", (fw, fh), (0, 0, 0, 0) if TRANSPARENT_FIELD else BG_COLOR + (255,))
+                  if rgba else Image.new("RGB", (fw, fh), BG_COLOR))
         framed.paste(sub, (m, m))                   # subject pinned high; clear field below
         out = framed
 
@@ -111,16 +138,15 @@ def src_eternal(size=1000):
     d = ImageDraw.Draw(img)
     cx, cy = W / 2, H / 2
     a = W * 0.36                       # lemniscate scale
-    rng = random.Random(7)
 
-    # audio-like amplitude envelope along the path parameter s in [0,1)
+    # audio-like amplitude envelope along the path parameter s in [0,1).
+    # Smooth sinusoids only — the old random grit left the band edge ragged once
+    # screened into the coarse block grid.
     def env(s):
-        v = (0.55
-             + 0.30 * abs(math.sin(s * math.pi * 9))
-             + 0.22 * abs(math.sin(s * math.pi * 23 + 1.3))
-             + 0.14 * math.sin(s * math.pi * 47 + 0.7))
-        v += (rng.random() - 0.5) * 0.5      # gritty noise like a real waveform
-        return max(0.12, v)
+        v = (0.62
+             + 0.26 * abs(math.sin(s * math.pi * 9))
+             + 0.18 * abs(math.sin(s * math.pi * 23 + 1.3)))
+        return max(0.18, v)
 
     NPTS = 1600
     base_amp = W * 0.052               # half-thickness of the waveform band
@@ -145,9 +171,9 @@ def src_eternal(size=1000):
         d.line([(x0 - nx * amp, y0 - ny * amp),
                 (x0 + nx * amp, y0 + ny * amp)], fill=0, width=stroke)
     # solid centerline so the infinity always reads even where spikes are short
-    d.line(pts, fill=0, width=max(3, int(W * 0.006)), joint="curve")
+    d.line(pts, fill=0, width=max(3, int(W * 0.010)), joint="curve")
 
-    img = img.filter(ImageFilter.GaussianBlur(W * 0.0016))
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0032))   # extra smoothing -> clean block edges
     return img.resize((size, size), Image.LANCZOS)
 
 
@@ -191,11 +217,11 @@ def src_invoice(size=1000):
     bar(cr - cw * 0.34, y + ph * 0.040, cr - cw * 0.10, y + ph * 0.058)
     y += ph * 0.11
 
-    # meta block: a few fat lines both sides
-    for _ in range(3):
-        bar(cl, y, cl + cw * 0.32, y + ph * 0.018)
-        bar(cr - cw * 0.32, y, cr - cw * 0.05, y + ph * 0.018)
-        y += ph * 0.034
+    # meta block: a couple of fat lines both sides (thicker -> clean in the grid)
+    for _ in range(2):
+        bar(cl, y, cl + cw * 0.32, y + ph * 0.030)
+        bar(cr - cw * 0.32, y, cr - cw * 0.05, y + ph * 0.030)
+        y += ph * 0.052
     y += ph * 0.015
 
     # table header rule (extra thick)
@@ -203,10 +229,11 @@ def src_invoice(size=1000):
     y += ph * 0.045
 
     # line items: each row = fat bars in 4 columns, widths jittered like text
-    row_h = ph * 0.052
-    bar_h = ph * 0.024
+    # (fewer + thicker than before so the rows read as bold bands, not thin noise)
+    row_h = ph * 0.078
+    bar_h = ph * 0.044
     ty0 = y - ph * 0.01
-    for _ in range(10):
+    for _ in range(6):
         bar(cl, y, cl + cw * (0.085 + rng.random() * 0.03), y + bar_h)          # UPC
         bar(cl + cw * 0.16, y, cl + cw * (0.34 + rng.random() * 0.16), y + bar_h)  # desc
         bar(cl + cw * 0.58, y, cl + cw * (0.66 + rng.random() * 0.05), y + bar_h)  # DRqty
@@ -227,8 +254,8 @@ def src_invoice(size=1000):
 
     # magnifier over the fine print (lower-right rows), bold ring + handle
     lcx, lcy = px0 + pw * 0.72, py0 + ph * 0.66
-    lr = pw * 0.215
-    ring = max(6, int(W * 0.018))
+    lr = pw * 0.235
+    ring = max(8, int(W * 0.024))
     d.ellipse([lcx - lr, lcy - lr, lcx + lr, lcy + lr], outline=0, width=ring, fill=255)
     a45 = math.radians(45)
     hx, hy = lcx + lr * math.cos(a45), lcy + lr * math.sin(a45)
@@ -238,17 +265,39 @@ def src_invoice(size=1000):
         ln = lr * (0.58 - i * 0.08)
         bar(lcx - ln, yy - lr * 0.07, lcx + ln, yy + lr * 0.07)
 
-    img = img.filter(ImageFilter.GaussianBlur(W * 0.0011))
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0026))   # smooth thin edges for clean blocks
+    return img.resize((size, size), Image.LANCZOS)
+
+
+# ---------------------------------------------------------------- data analysis
+def src_data(size=1000):
+    """A clean vertical bar chart — solid bars sit crisp in the block grid."""
+    W = H = size * SS
+    img = Image.new("L", (W, H), 255)
+    d = ImageDraw.Draw(img)
+    margin = W * 0.09
+    base = H * 0.84
+    heights = [0.30, 0.52, 0.40, 0.66, 0.55, 0.82, 0.72, 0.95,
+               0.80, 0.62, 0.88, 0.70, 0.46, 0.34]
+    n = len(heights)
+    gap = W * 0.012
+    bw = (W - 2 * margin - (n - 1) * gap) / n
+    for i, hf in enumerate(heights):
+        x0 = margin + i * (bw + gap)
+        d.rectangle([x0, base - hf * H * 0.60, x0 + bw, base], fill=0)
+    d.rectangle([margin * 0.7, base, W - margin * 0.7, base + max(4, int(W * 0.012))], fill=0)
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0010))
     return img.resize((size, size), Image.LANCZOS)
 
 
 if __name__ == "__main__":
     C = r"C:\website\assets\covers"
-    S = r"C:\website\tools\covers-src"   # clean pumpkin-on-parchment originals (source of truth)
-    # the two we have procedural sources for -> regenerate clean
+    S = r"C:\website\tools\covers-src"   # clean pumpkin-on-parchment originals
+    # procedural / clean sources
     asciify(src_eternal(), C + r"\eternal-fm.webp")
     asciify(src_invoice(), C + r"\invoice.webp")
-    # the four without procedural sources -> re-render from the CLEAN originals in
-    # covers-src/ (never from C/, which holds the already-inverted output)
-    for name in ("lissajous", "data-analysis", "discord", "make-your-own"):
+    asciify(src_data(),    C + r"\data-analysis.webp")   # new bar chart (kept)
+    # lissajous / discord / make-your-own: re-screen the original letter-ASCII art
+    # (the look that was working — keep these on the reascii path)
+    for name in ("lissajous", "discord", "make-your-own"):
         reascii(S + "\\" + name + ".webp", C + "\\" + name + ".webp")

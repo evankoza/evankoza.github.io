@@ -737,8 +737,23 @@
      switch raw covers to `contain` so the browser letterboxes the whole icon and
      fills the crop margins with the tile's own pumpkin background — the padding
      adapts to each tile's shape automatically. */
-  .tile.raw .tile-photo { filter: none; object-fit: contain; }
-  .tile.raw { background: var(--pumpkin); }  /* #C95000 — matches the cover field */
+  /* raw covers: a KNOCKOUT. The tile fills with solid pumpkin (::before) and the
+     subject art (--cover, an alpha mask) is SUBTRACTED so the subject becomes a real
+     transparent hole — revealing the page / faint projects-bg field flowing behind
+     the wall. The orange ::before covers the whole cell (connected, no letterbox);
+     `contain` mask sizing scales the subject to each tile without ever clipping it. */
+  .tile.raw { background: transparent; }
+  .tile.raw::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: var(--pumpkin);
+    -webkit-mask: var(--cover) center / contain no-repeat, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: var(--cover) center / contain no-repeat, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
   /* no scrim/overlay on raw tiles — white edge labels sit on the bare pumpkin
      (overrides the .has-photo bottom scrim these tiles would otherwise inherit) */
   .tile.raw::after { background: none; }
@@ -2125,8 +2140,12 @@
       if (cover) b.classList.add("has-photo");
       // compile-style covers (pumpkin-on-cream art) skip the duotone + dark scrim
       if (cover && proj.coverRaw) b.classList.add("raw");
+      // raw covers render as a knockout mask on .tile.raw::before (the subject is
+      // punched out of the solid orange tile so the code field shows through), so
+      // expose the art as a CSS var instead of a plain <img>.
+      if (cover && proj.coverRaw) b.style.setProperty("--cover", 'url("' + cover + '")');
       b.innerHTML =
-        (cover
+        (cover && !proj.coverRaw
           ? '<img class="tile-photo" src="' + cover + '" alt="" loading="lazy" decoding="async">'
           : "") +
         '<span class="tile-inner">' +
@@ -2560,7 +2579,7 @@
     const eyes = Array.from(document.querySelectorAll(".peek-eye"));
     if (!eyes.length) return;
 
-    const STEP = 50;         // ms between hops
+    const STEP = 65;         // ms between hops
     const MIN_GAP = 300;     // px past the edge (closest — easiest to catch)
     const MAX_GAP = 600;     // px past the edge (farthest — needs a fast flick)
     const footer = document.querySelector(".site-footer");
