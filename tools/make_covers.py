@@ -12,19 +12,21 @@ Two subjects:
   invoice    : a stacked invoice page with a magnifier over the fine print
 """
 import math, random
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 RAMP = " .'\",:;!i+trxnvczXYUJCLQ0OZmwqpdbkhao#MW&8%B@$"
-PARCH = (236, 234, 228)   # --bg #ECEAE3
-PUMPKIN = (242, 98, 46)   # #F2622E
-CUT = 150                 # lum >= cut -> blank
+# Inverted scheme: bright pumpkin field, warm-white glyphs (was the reverse).
+BG_COLOR = (242, 98, 46)    # #F2622E  --pumpkin-bright  (the tile fills with this too)
+FG_COLOR = (246, 240, 231)  # #F6F0E7  warm near-white glyphs
+CUT = 150                   # lum >= cut -> blank (bg shows through)
 GAMMA = 1.0
+CHAR_H = 32                 # glyph height in px (13 -> 15 -> 19 -> 26 -> 32; bigger = lower-res, legible glyphs)
 FONT_PATH = r"C:\Windows\Fonts\consola.ttf"
 
 SS = 3  # supersample factor for the source line art (anti-aliased edges -> ramp falloff)
 
 
-def asciify(src_gray, out_path, char_h=14):
+def asciify(src_gray, out_path, char_h=CHAR_H):
     """src_gray: 'L' image, dark shape on white. Sample -> glyph mosaic -> save webp."""
     W, H = src_gray.size
     char_w = char_h * 0.6
@@ -34,7 +36,7 @@ def asciify(src_gray, out_path, char_h=14):
     small = src_gray.resize((cols, rows), Image.BILINEAR)
     px = small.load()
 
-    out = Image.new("RGB", (W, H), PARCH)
+    out = Image.new("RGB", (W, H), BG_COLOR)
     d = ImageDraw.Draw(out)
     font = ImageFont.truetype(FONT_PATH, char_h)
     N = len(RAMP)
@@ -48,9 +50,32 @@ def asciify(src_gray, out_path, char_h=14):
             ch = RAMP[min(N - 1, int(t * N))]
             if ch == " ":
                 continue
-            d.text((c * char_w, y - char_h * 0.12), ch, font=font, fill=PUMPKIN)
+            d.text((c * char_w, y - char_h * 0.12), ch, font=font, fill=FG_COLOR)
     out.save(out_path, "WEBP", quality=92, method=6)
     print("wrote", out_path, out.size, f"{cols}x{rows} glyphs")
+
+
+def reascii(in_path, out_path, char_h=CHAR_H, blur=8, gain=1.7, floor=0.16):
+    """Re-render an EXISTING pumpkin-on-parchment cover (no source available) at a
+    new glyph size + inverted palette. The old art is sparse (thin glyphs with
+    parchment gaps), so measure *ink relative to parchment* (so blank stays blank),
+    blur to merge the sparse glyphs into a continuous density field, normalise, and
+    apply a hard `floor` so faint background/compression noise clips to blank instead
+    of becoming a full-field ASCII texture. `gain` lifts the sparse subject so it
+    isn't too faint. Result is fed to asciify as a clean dark-shape-on-white source."""
+    PARCH_L = 232
+    cov = Image.open(in_path).convert("L")
+    ink = cov.point([max(0, PARCH_L - i) for i in range(256)])   # 0 = parchment (blank)
+    ink = ink.filter(ImageFilter.GaussianBlur(blur))             # sparse glyphs -> density
+    mx = ink.getextrema()[1] or 1
+    def f(v):
+        n = v / mx
+        if n < floor:
+            return 255                                           # clean blank field
+        n = min(1.0, (n - floor) / (1 - floor) * gain)
+        return int(round(255 * (1 - n)))
+    src = ink.point([f(v) for v in range(256)])
+    asciify(src, out_path, char_h)
 
 
 # ---------------------------------------------------------------- eternal fm
@@ -192,5 +217,12 @@ def src_invoice(size=1000):
 
 
 if __name__ == "__main__":
-    asciify(src_eternal(), r"C:\website\assets\covers\eternal-fm.webp", char_h=13)
-    asciify(src_invoice(), r"C:\website\assets\covers\invoice.webp", char_h=13)
+    C = r"C:\website\assets\covers"
+    S = r"C:\website\tools\covers-src"   # clean pumpkin-on-parchment originals (source of truth)
+    # the two we have procedural sources for -> regenerate clean
+    asciify(src_eternal(), C + r"\eternal-fm.webp")
+    asciify(src_invoice(), C + r"\invoice.webp")
+    # the four without procedural sources -> re-render from the CLEAN originals in
+    # covers-src/ (never from C/, which holds the already-inverted output)
+    for name in ("lissajous", "data-analysis", "discord", "make-your-own"):
+        reascii(S + "\\" + name + ".webp", C + "\\" + name + ".webp")

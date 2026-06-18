@@ -721,38 +721,36 @@
     background: linear-gradient(180deg,
       rgba(30,10,0,.20) 0%, rgba(30,10,0,.10) 38%, rgba(30,10,0,.60) 100%);
   }
-  /* "raw" covers (coverRaw:true) are already compile-style pumpkin-on-cream art,
-     so they skip the duotone and the dark scrim — and the number/label flip to
-     dark ink with a cream halo so they stay legible over the light artwork. */
-  /* The covers are square icons centred on parchment, but tiles crop to many
+  /* "raw" covers (coverRaw:true) are compile-style ASCII art — a bright pumpkin
+     field with warm-white glyphs — so they skip the screenshot duotone. The tile
+     background matches the cover's pumpkin so the contain letterbox (below) is
+     seamless, and the number/label keep the standard white-on-dark treatment like
+     the photo tiles (no override needed). */
+  /* The covers are square-ish icons on their pumpkin field, but tiles crop to many
      aspect ratios (square / wide / tall). `cover` would slice the art off; we
-     switch raw covers to `contain` so the browser letterboxes the whole icon
-     and fills the crop margins with the tile's own parchment background — the
-     padding adapts to each tile's shape automatically. */
+     switch raw covers to `contain` so the browser letterboxes the whole icon and
+     fills the crop margins with the tile's own pumpkin background — the padding
+     adapts to each tile's shape automatically. */
   .tile.raw .tile-photo { filter: none; object-fit: contain; }
-  .tile.raw { background: var(--bg); }
-  .tile.raw::after {
-    background: linear-gradient(180deg, transparent 58%, rgba(40,18,0,.10) 100%);
-  }
-  .tile.raw .num,
-  .tile.raw .tile-label {
-    color: var(--ink);
-    text-shadow: 0 0 2px var(--bg), 0 1px 12px var(--bg);
-  }
-  .tile.raw .num .hash { color: var(--pumpkin); opacity: .8; }
+  .tile.raw { background: var(--pumpkin-bright); }
+  /* no scrim/overlay on raw tiles — white edge labels sit on the bare pumpkin
+     (overrides the .has-photo bottom scrim these tiles would otherwise inherit) */
+  .tile.raw::after { background: none; }
+  .tile.raw .num .hash { color: #fff; opacity: 1; }
   /* tile content: the project number over its name. Tiles cycle through the
      real projects, so the same name reappears down the wall by design. */
+  /* the number and title sit on the tile EDGES (number in the top-left corner,
+     title along the bottom) rather than stacked in the centre — keeps them off
+     the busy glyph subject in the middle and on the cleaner field at the rim */
   .tile-inner {
-    position: relative;
+    position: absolute;
+    inset: 0;
     z-index: 2;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 10px;
-    text-align: center;
   }
   .tile .num {
+    position: absolute;
+    top: clamp(6px, 1.2vw, 12px);
+    left: clamp(9px, 1.4vw, 15px);
     font-size: clamp(1.7rem, 3.4vw, 3rem);
     font-weight: 700;
     letter-spacing: -0.02em;
@@ -766,17 +764,18 @@
     margin-right: .04em;
   }
   .tile-label {
+    position: absolute;
+    left: clamp(9px, 1.4vw, 15px);
+    right: clamp(9px, 1.4vw, 15px);
+    bottom: clamp(8px, 1.4vw, 13px);
     font-size: clamp(10px, 1vw, 12px);
     font-weight: 600;
     letter-spacing: .14em;
     text-transform: uppercase;
-    max-width: 96%;
-    opacity: .9;
+    opacity: .95;
     text-shadow: 0 1px 8px rgba(0,0,0,.25);
   }
-  /* landscape tiles are short but wide — tighten the number/label stack so
-     both fit cleanly in the one-row strip instead of dropping the name */
-  .tile.l .tile-inner { gap: 2px; }
+  /* landscape tiles are short but wide — shrink the corner numeral a touch */
   .tile.l .num { font-size: clamp(1.4rem, 2.6vw, 2.2rem); }
   .tile:hover,
   .tile:focus-visible {
@@ -1125,7 +1124,7 @@
   <section class="decide-section">
     <span class="eyebrow"><span class="prompt">~ $</span> shuf -n 1 ./projects</span>
     <button type="button" class="decide" id="decide-btn">
-      Paralyzed by choice?
+      paralyzed by choice?
       <span class="decide-go">let me decide<span class="arrow" aria-hidden="true">&nbsp;&rarr;</span></span>
     </button>
     <div class="decide-rule" aria-hidden="true"></div>
