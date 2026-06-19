@@ -1371,13 +1371,13 @@
 
       <div class="london-maps">
         <figure class="london-map">
-          <iframe loading="lazy" title="Map of London, Ontario, Canada"
-            src="https://www.openstreetmap.org/export/embed.html?bbox=-84.50%2C41.40%2C-78.00%2C44.60&amp;layer=mapnik&amp;marker=42.9849%2C-81.2453"></iframe>
+          <iframe title="Map of London, Ontario, Canada"
+            data-src="https://www.openstreetmap.org/export/embed.html?bbox=-84.50%2C41.40%2C-78.00%2C44.60&amp;layer=mapnik&amp;marker=42.9849%2C-81.2453"></iframe>
           <figcaption class="london-cap"><span class="flag">🇨🇦</span> London, Ontario <span class="map-tag yes">this one →</span></figcaption>
         </figure>
         <figure class="london-map london-map--wrong">
-          <iframe loading="lazy" title="Map of London, England"
-            src="https://www.openstreetmap.org/export/embed.html?bbox=-3.40%2C49.80%2C3.10%2C53.00&amp;layer=mapnik&amp;marker=51.5074%2C-0.1278"></iframe>
+          <iframe title="Map of London, England"
+            data-src="https://www.openstreetmap.org/export/embed.html?bbox=-3.40%2C49.80%2C3.10%2C53.00&amp;layer=mapnik&amp;marker=51.5074%2C-0.1278"></iframe>
           <figcaption class="london-cap"><span class="flag">🏴󠁧󠁢󠁥󠁮󠁧󠁿</span> London, England <span class="map-tag no">not this one</span></figcaption>
         </figure>
       </div>
@@ -2012,6 +2012,9 @@
           { label: "Launch demo", href: "experiments/invoice-game.html" },
           { label: "Source", href: "https://github.com/evankoza/invoice-scanner" },
         ],
+        // demo loads the shipment dataset via <script src>, so the page
+        // prefetch won't pull it — warm it explicitly (see §2b).
+        prefetch: ["assets/items.js"],
         photos: [],
         cover: "assets/covers/invoice.webp",
         coverRaw: true,
@@ -2315,6 +2318,29 @@
     let modalField = null;   // set up in §4
     let currentProject = null;   // index of the project whose modal is open
 
+    // ── 2b. warm the cache while they read ────────────────────────────
+    // Opening a modal is a strong signal the visitor may launch the demo
+    // next, and they spend a few seconds reading first — a perfect window
+    // to quietly fetch the demo page (and any heavy deps) at low priority
+    // so the eventual click is an instant, cache-served navigation.
+    // <link rel="prefetch"> only downloads + caches the bytes; it does NOT
+    // execute, so there are zero canvas/audio/worker side effects from
+    // these heavy experiment pages. Each URL is fetched at most once, and
+    // we back off on data-saver / very slow connections to respect metered
+    // data.
+    const prefetched = new Set();
+    function warmPrefetch(url, as) {
+      if (!url || prefetched.has(url)) return;
+      const c = navigator.connection;
+      if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ""))) return;
+      prefetched.add(url);
+      const link = document.createElement("link");
+      link.rel = "prefetch";
+      link.href = url;
+      if (as) link.as = as;   // omit for documents; "script" for JS deps, etc.
+      document.head.appendChild(link);
+    }
+
     function openModal(pi, instant) {
       const proj = PROJECTS[pi % PROJECTS.length];
       currentProject = pi;
@@ -2339,6 +2365,13 @@
           ' <span class="arrow" aria-hidden="true">' + (external ? "&#8599;" : "&rarr;") + "</span>";
         actionsEl.appendChild(a);
       });
+
+      // warm the demo (and any declared heavy deps) into cache — see §2b.
+      // Only the on-site demo page is prefetched; off-site links (GitHub,
+      // Discord) aren't ours to speculatively fetch.
+      const demo = (proj.links || []).find((l) => /^experiments\//.test(l.href));
+      if (demo) warmPrefetch(demo.href);
+      (proj.prefetch || []).forEach((u) => warmPrefetch(u, "script"));
 
       // stack chips
       stackEl.innerHTML = "";
@@ -2442,7 +2475,34 @@
     // and Escape, mirroring the project modal above.
     const londonRoot = document.getElementById("london-root");
     let londonField = null;   // character-field backdrop, set up in §5
+
+    // The two OSM embeds aren't loaded until needed (no src on page load), so
+    // visitors who never open this gag don't pay for two map tiles. Hovering
+    // (or focusing) the "loc · London, ON" line is a strong signal it's about
+    // to open — kick the iframes off then so the maps are painted by the time
+    // the modal animates in, instead of showing a blank "loading map". The
+    // modal is only visibility:hidden (still laid out), so a hidden iframe with
+    // a real src loads fine. Idempotent; also fired on open as a fallback for
+    // taps that skip hover.
+    let londonWarmed = false;
+    function warmLondonMaps() {
+      if (londonWarmed) return;
+      londonWarmed = true;
+      // shave the connection setup before the iframe requests go out
+      const pc = document.createElement("link");
+      pc.rel = "preconnect";
+      pc.href = "https://www.openstreetmap.org";
+      document.head.appendChild(pc);
+      londonRoot.querySelectorAll("iframe[data-src]").forEach((f) => {
+        f.src = f.dataset.src;
+      });
+    }
+    const locBtn = document.getElementById("loc-london");
+    locBtn.addEventListener("pointerenter", warmLondonMaps);
+    locBtn.addEventListener("focus", warmLondonMaps);
+
     function openLondon() {
+      warmLondonMaps();   // fallback: ensure maps are loading even on a cold tap
       londonRoot.classList.add("open");
       londonRoot.setAttribute("aria-hidden", "false");
       document.body.style.overflow = "hidden";
