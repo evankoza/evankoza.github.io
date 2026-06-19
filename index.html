@@ -2124,6 +2124,15 @@
     const SET_COUNT = SET_SEQ.length;   // distinct placeholder tiles per set
     const COPIES = 3;                   // 1 middle band + 1 buffer copy each side
 
+    // Easter egg: as each tile is built it rolls a 1/50 chance to show a staring eye
+    // (the vision1 eye, baked into the same pumpkin knockout cover) instead of its
+    // project art. Rolling per tile — not per set-position — sprinkles the eyes around
+    // rather than pinning one to a slot that repeats in every loop band. Hovering an
+    // eye reveals that tile's real art and it stays revealed. (Clones rolling
+    // independently is fine: the seamless wrap depends on tile widths, which are
+    // identical whether a tile shows the eye or its project — only the art differs.)
+    const EYE_COVER = "assets/covers/eye.webp";
+
     const masonry = document.getElementById("masonry");
     function makeTile(size, idx) {
       // tiles cycle through the real projects (more tiles than projects)
@@ -2144,6 +2153,18 @@
       // punched out of the solid orange tile so the code field shows through), so
       // expose the art as a CSS var instead of a plain <img>.
       if (cover && proj.coverRaw) b.style.setProperty("--cover", 'url("' + cover + '")');
+      // 1/50 eye: swap the knockout art for the eye, then reveal the real art on the
+      // first hover/focus (once) — it stays revealed afterward.
+      if (cover && proj.coverRaw && Math.random() < 0.02) {
+        b.classList.add("is-eye");
+        b.style.setProperty("--cover", 'url("' + EYE_COVER + '")');
+        const reveal = () => {
+          b.classList.remove("is-eye");
+          b.style.setProperty("--cover", 'url("' + cover + '")');
+        };
+        b.addEventListener("pointerenter", reveal, { once: true });
+        b.addEventListener("focus", reveal, { once: true });
+      }
       b.innerHTML =
         (cover && !proj.coverRaw
           ? '<img class="tile-photo" src="' + cover + '" alt="" loading="lazy" decoding="async">'

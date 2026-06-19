@@ -269,6 +269,27 @@ def src_invoice(size=1000):
     return img.resize((size, size), Image.LANCZOS)
 
 
+# ---------------------------------------------------------------- eye (easter egg)
+# The vision0 peeking-eye photo, screened into the same block-ASCII knockout as the
+# project covers. The wall uses this to (rarely) replace a project's art with a
+# staring eye. Photo -> dark-subject-on-white source: composite the transparent PNG
+# on white (skin/sclera read light -> blank field), grayscale, then push contrast so
+# the iris/pupil/lid-crease/lashes survive as solid dark masses (thin lines vanish in
+# the coarse grid). A vignette darkens the outer almond so the eye SHAPE reads, not
+# just a floating pupil.
+# ---------------------------------------------------------------- eye (easter egg)
+# The vision1 eye photo, screened into the SAME pumpkin knockout as every other cover.
+# Photo -> dark-subject-on-white source: composite the transparent PNG on white (skin
+# /sclera read light -> blank field), grayscale, autocontrast so the iris/pupil/lid
+# survive as dark masses, then hand to asciify (cut raised for a photo's higher mids).
+def src_eye(size=1000):
+    eye = Image.open(r"C:\website\assets\vision1.png").convert("RGBA")
+    bg = Image.new("RGBA", eye.size, (255, 255, 255, 255))
+    bg.alpha_composite(eye)
+    g = ImageOps.autocontrast(bg.convert("L"), cutoff=2)
+    return g.resize((size, size), Image.LANCZOS)
+
+
 # ---------------------------------------------------------------- data analysis
 def src_data(size=1000):
     """A clean vertical bar chart — solid bars sit crisp in the block grid."""
@@ -297,6 +318,7 @@ if __name__ == "__main__":
     asciify(src_eternal(), C + r"\eternal-fm.webp")
     asciify(src_invoice(), C + r"\invoice.webp")
     asciify(src_data(),    C + r"\data-analysis.webp")   # new bar chart (kept)
+    asciify(src_eye(),     C + r"\eye.webp", cut=205)     # vision1 eye easter egg (1/100 wall tile)
     # lissajous / discord / make-your-own: re-screen the original letter-ASCII art
     # (the look that was working — keep these on the reascii path)
     for name in ("lissajous", "discord", "make-your-own"):
