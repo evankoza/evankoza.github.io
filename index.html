@@ -2643,7 +2643,17 @@
       eyes.forEach((eye) => place(eye, maxBottom));
     };
     hop();                          // seed positions before first paint reveal
-    setInterval(hop, STEP);
+
+    // Run the hop timer only while the tab is visible — backgrounded tabs gain
+    // nothing from repositioning (and each hop forces a reflow via
+    // getBoundingClientRect). Mirrors the pause discipline of the hero/field.
+    let hopTimer = null;
+    const startHops = () => { if (hopTimer == null) hopTimer = setInterval(hop, STEP); };
+    const stopHops  = () => { if (hopTimer != null) { clearInterval(hopTimer); hopTimer = null; } };
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopHops(); else { hop(); startHops(); }
+    });
+    if (!document.hidden) startHops();
   })();
   </script>
 </body>
