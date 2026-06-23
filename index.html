@@ -286,28 +286,62 @@
 
   /* ── ABOUT ME ───────────────────────────────────────────── */
   /* full-width stage: the framed resume floats on the paper card while a
-     faint parallaxing grid drifts behind it, showing only in the margins.
-     Mirrors the hero grid on the digits landing page. */
+     fluid ordered-dither field drifts behind it, showing only in the margins.
+     The field is painted on a <canvas> (.about-dither) by JS — flowing blobs
+     of pumpkin (with the odd cobalt patch) over the cream canvas. It still
+     parallaxes on scroll, just like the grid it replaced. */
   .about {
     position: relative;
     padding: clamp(64px, 10vw, 128px) clamp(20px, 5vw, 72px);
   }
-  .about::before {
-    content: '';
+  /* static window onto the section: clips the oversized dither layer to the
+     section box and fades it at the top/bottom edges. Because the mask lives on
+     this (non-moving) element, the fade always tracks the section — not the
+     canvas, which slides for parallax. */
+  .about-dither-wrap {
     position: absolute; inset: 0;
-    background-image:
-      linear-gradient(var(--grid-line) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-    background-size: 46px 46px;
-    /* pin the grid to the viewport so it does NOT scroll 1:1 with the section.
-       JS then drives the small parallax drift via --about-grid-y — this is the
-       only motion, so there's nothing for it to fight against (= no jitter). */
-    background-attachment: fixed;
-    background-position: center var(--about-grid-y, 0px);
+    overflow: hidden;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
     mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
     z-index: 0;
     pointer-events: none;
+  }
+  /* the dither bitmap itself. It's taller than the section (JS sets top/height)
+     so it can be translated for parallax without ever exposing an edge. Pixels,
+     dither and smoke all live in this ONE bitmap, so they move together 1:1 —
+     the parallax is a pure GPU translate of the whole layer (no shower-door). */
+  .about-dither {
+    position: absolute; left: 0; right: 0;
+    /* chunky pixels must stay crisp when the small field buffer is scaled up */
+    image-rendering: pixelated;
+    will-change: transform;
+  }
+  /* Compositor-driven parallax. Where the browser supports scroll-driven
+     animations, this CSS animation translates the dither layer in lockstep with
+     scroll — on the GPU, synced at the hardware level, with ZERO JavaScript in
+     the scroll path. That's the only way to fully kill the main-thread lag /
+     rubber-banding; JS scroll parallax is always a frame behind the compositor.
+     `--dither-pad` (the travel distance) is supplied by JS on resize. The view
+     timeline runs the keyframes across the section's full pass through the
+     viewport (cover 0% → 100%): -pad as it enters from the bottom, +pad as it
+     exits the top, so the layer reads as a slower, far-away plane.
+     Browsers without support fall back to the JS rAF transform (see script). */
+  @keyframes about-dither-parallax {
+    from { transform: translateY(calc(-1 * var(--dither-pad, 0px))); }
+    to   { transform: translateY(var(--dither-pad, 0px)); }
+  }
+  @supports (animation-timeline: scroll()) {
+    .about { view-timeline-name: --about-vt; view-timeline-axis: block; }
+    .about-dither {
+      animation-name: about-dither-parallax;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: --about-vt;
+      animation-range: cover;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .about-dither { animation: none; }
+    }
   }
   /* the solid framing box — sits on the opaque paper surface so the grid
      reads only in the surrounding canvas */
@@ -1182,6 +1216,7 @@
        Reformatted from the DIGITS media/talk grid: sticky identity
        column on the left, scrolling experience timeline on the right. -->
   <section class="about" id="about">
+   <div class="about-dither-wrap" aria-hidden="true"><canvas class="about-dither"></canvas></div>
    <div class="about-frame">
     <span class="eyebrow"><span class="prompt">~ $</span> whoami</span>
 
@@ -1946,30 +1981,216 @@
   })();
   </script>
 
-  <!-- ══ ABOUT: parallax the grid behind the framed resume ═══════
-       Drift the background grid as the section scrolls through the
-       viewport — same idea as the digits landing hero. -->
+  <!-- ══ ABOUT: fluid ordered-dither field behind the framed resume ═══
+       A <canvas> painted with flowing blobs of pumpkin (+ the occasional
+       cobalt patch) over the cream canvas, dithered with an 8×8 Bayer
+       matrix for the chunky retro grain in the reference. It animates
+       continuously AND parallaxes on scroll — same depth cue as the grid
+       it replaced. Everything visual lives in CONFIG below, so retuning
+       the look (cell size, palette, speed, cobalt amount…) is one edit. -->
   <script>
   (() => {
-    const about = document.querySelector('.about');
-    if (!about) return;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    // the grid is pinned to the viewport (background-attachment: fixed), so on
-    // its own it's perfectly still while the resume scrolls past — maximum
-    // depth. We then nudge it UP at SPEED× the scroll so it reads as a slow,
-    // far-away layer rather than a frozen backdrop (0 = frozen, 1 = locked to
-    // content). This is the only motion, so it stays smooth.
-    const SPEED = 0.15;
-    let raf = false;
-    function update() {
-      raf = false;
-      const offset = -window.scrollY * SPEED;
-      about.style.setProperty('--about-grid-y', offset.toFixed(1) + 'px');
+    const canvas = document.querySelector('.about-dither');
+    const about  = document.querySelector('.about');
+    if (!canvas || !about) return;
+    const ctx = canvas.getContext('2d');
+
+    // ── the ONE place to tune the effect ───────────────────────────────
+    const CONFIG = {
+      CELL:        9,     // px per dither cell (chunky). Smaller = finer grain.
+      SCALE:       0.07,  // feature size: lower = bigger, more stretched-out clouds.
+      WARP:        2.6,   // domain-warp strength — how hard the field is smeared into
+                          //   flowing smoke wisps. 0 = plain (blobby) fractal noise.
+      OCT:         4,     // fractal detail in octaves. Higher = wispier (and costlier).
+      CONTRAST:    1.7,   // expands mids toward cream / deep pumpkin so wisps read.
+      FLOW:        0.05,  // how fast the smoke drifts and evolves over time.
+      FPS:         30,    // repaint cap — a slow drift needs nothing near 60.
+      SPEED:       0.4,   // apparent scroll speed of the field: 1 = locked to the
+                          //   page, 0 = pinned in the viewport (max depth). 0.4 =
+                          //   a calm, slow far-away layer.
+      OPACITY:     0.55,  // overall layer opacity (medium — never fights the text).
+      COBALT_AMT:  0.18,  // how much of the field tips into cobalt vs. orange (0–1).
+      DENSITY:     1.05,  // pigment coverage multiplier; >1 fills more cells.
+      // palette ramps, dark → light. Cell 0 stays transparent so the page's
+      // cream canvas shows through (and reads only in the resume's margins).
+      ORANGE: ['transparent', '#E8C58A', '#D98A3D', '#C95000', '#F2622E'],
+      COBALT: ['transparent', '#9FB7D8', '#3F6FB0', '#1F4E8C'],
+    };
+
+    // 8×8 Bayer threshold matrix, normalised to (0,1). Ordered dithering
+    // compares the per-pixel target level against this to pick a palette step.
+    const BAYER = (() => {
+      const m = [
+        [ 0,32, 8,40, 2,34,10,42],[48,16,56,24,50,18,58,26],
+        [12,44, 4,36,14,46, 6,38],[60,28,52,20,62,30,54,22],
+        [ 3,35,11,43, 1,33, 9,41],[51,19,59,27,49,17,57,25],
+        [15,47, 7,39,13,45, 5,37],[63,31,55,23,61,29,53,21],
+      ];
+      return m.map(r => r.map(v => (v + 0.5) / 64));
+    })();
+
+    // parse "#rrggbb" → [r,g,b]; 'transparent' → null (cell left see-through).
+    const rgb = h => h === 'transparent' ? null
+      : [1,3,5].map(i => parseInt(h.slice(i, i + 2), 16));
+    const ORANGE = CONFIG.ORANGE.map(rgb);
+    const COBALT = CONFIG.COBALT.map(rgb);
+
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Where scroll-driven animations exist, CSS moves the layer on the compositor
+    // (see <style>) — perfectly smooth, no scroll lag. Only older browsers fall
+    // back to driving the transform from JS.
+    const cssDriven = !!(window.CSS && CSS.supports && CSS.supports('animation-timeline: scroll()'));
+    const tSlope = 1 - CONFIG.SPEED;            // px of layer travel per px scrolled
+    let cols = 0, rows = 0, img = null, pad = 0, secH = 0, curT = 0, tConst = 0, secTopAbs = 0, baseConst = 0;
+
+    function resize() {
+      const w = about.clientWidth, vh = window.innerHeight;
+      secH = about.clientHeight;
+      // Oversize the layer by the parallax travel so translating it never
+      // exposes an edge: over a full scroll-through the layer shifts by
+      // (1 - SPEED) × (section + viewport); pad each side by half of that.
+      pad = Math.ceil(tSlope * (secH + vh) / 2) + CONFIG.CELL;
+      const h = secH + pad * 2;
+      canvas.style.top = -pad + 'px';
+      canvas.style.height = h + 'px';
+      cols = Math.max(1, Math.ceil(w / CONFIG.CELL));
+      rows = Math.max(1, Math.ceil(h / CONFIG.CELL));
+      // render into a tiny cols×rows buffer, then let CSS scale it up crisply
+      canvas.width = cols; canvas.height = rows;
+      img = ctx.createImageData(cols, rows);
+      // document-absolute top of the section. With it, the transform and the
+      // visible-band math are pure functions of window.scrollY — no layout-
+      // forcing rect reads anywhere in the animation loop.
+      secTopAbs = about.getBoundingClientRect().top + window.scrollY;
+      tConst = tSlope * (secTopAbs + secH / 2 - vh / 2);
+      baseConst = pad + tConst - secTopAbs;     // band: base = baseConst + scrollY·SPEED
+      // hand the parallax travel to the CSS keyframes (compositor path)
+      canvas.style.setProperty('--dither-pad', pad + 'px');
+      if (!cssDriven) setTransform();           // JS fallback positions it now
     }
-    window.addEventListener('scroll', () => {
-      if (raf) return; raf = true; requestAnimationFrame(update);
-    }, { passive: true });
-    update();
+
+    // JS FALLBACK only (browsers without scroll-driven animations). Derived from
+    // scrollY and refreshed in the rAF loop — not on the scroll event — which is
+    // the best the main thread can do. Where CSS drives it, this is never called.
+    function setTransform() {
+      if (reduce) return;                       // no scroll-driven motion
+      curT = tSlope * window.scrollY - tConst;
+      canvas.style.transform = 'translateY(' + curT.toFixed(2) + 'px)';
+    }
+
+    // ── value-noise + domain warp → flowing, smoke-like field ──────────────
+    // cheap integer hash (no Math.sin) → pseudo-random [0,1) at lattice (ix,iy)
+    function hash(ix, iy) {
+      let n = (Math.imul(ix | 0, 374761393) + Math.imul(iy | 0, 668265263)) | 0;
+      n = Math.imul(n ^ (n >>> 13), 1274126177);
+      return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+    }
+    // smoothstep-interpolated 2D value noise → ~[0,1]
+    function vnoise(x, y) {
+      const xi = Math.floor(x), yi = Math.floor(y);
+      const xf = x - xi, yf = y - yi;
+      const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+      const a = hash(xi, yi),     b = hash(xi + 1, yi);
+      const c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+      return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+    }
+    // fractal noise: stack octaves of vnoise for cloudy detail → ~[0,1]
+    function fbm(x, y, oct) {
+      let val = 0, amp = 0.5, f = 1, norm = 0;
+      for (let o = 0; o < oct; o++) { val += amp * vnoise(x * f, y * f); norm += amp; f *= 2; amp *= 0.5; }
+      return val / norm;
+    }
+    // domain-warped sample: displace the lookup by its OWN low-octave fBm so
+    // regions smear into flowing wisps instead of sitting in a fixed lattice.
+    // The warp (the expensive bit) is shared, so the cobalt mask is near-free.
+    function sample(gx, gy, t, out) {
+      const wx = fbm(gx + 1.7 + t * 0.10, gy, 2);
+      const wy = fbm(gx, gy + 9.2 - t * 0.08, 2);
+      const wgx = gx + CONFIG.WARP * wx;
+      const wgy = gy + CONFIG.WARP * wy;
+      out.dens = fbm(wgx, wgy, CONFIG.OCT);
+      out.cob  = fbm(wgx * 0.55 + 4.0, wgy * 0.55 - 2.0, 2);
+    }
+
+    // pick a dithered colour for one cell given a 0…1 level + a ramp.
+    function ramp(level, pal, bx, by, out) {
+      level = Math.min(0.999, Math.max(0, level)) * (pal.length - 1);
+      const lo = Math.floor(level);
+      const hi = (level - lo) > BAYER[by & 7][bx & 7] ? lo + 1 : lo;
+      out.c = pal[hi];
+    }
+
+    const pick = { c: null };
+    const sm = { dens: 0, cob: 0 };
+    function paint(t, full) {
+      // The field is sampled in canvas-LOCAL coordinates (no scroll term) so the
+      // smoke, the pixel grid and the Bayer dither are all baked into the one
+      // bitmap and move together — parallax is handled by translating the layer.
+      // Only the rows currently visible through the window get computed; the
+      // canvas is much taller than the viewport, so the rest is wasted work.
+      let cyMin = 0, cyMax = rows;
+      if (!full) {
+        const vh = window.innerHeight, margin = vh * 0.4;
+        // local-y of the top visible row — a pure function of scroll that matches
+        // the layer's current translate (whether driven by CSS or the JS fallback).
+        const base = baseConst + window.scrollY * CONFIG.SPEED;
+        cyMin = Math.max(0, Math.floor((base - margin) / CONFIG.CELL));
+        cyMax = Math.min(rows, Math.ceil((base + vh + margin) / CONFIG.CELL));
+      }
+      const opaque = Math.round(255 * CONFIG.OPACITY);
+      const d = img.data;
+      for (let cy = cyMin; cy < cyMax; cy++) {
+        const gy = cy * CONFIG.SCALE;
+        for (let cx = 0; cx < cols; cx++) {
+          const gx = cx * CONFIG.SCALE;
+          sample(gx, gy, t, sm);
+          // expand contrast around the mid so wisps read as cream→deep pumpkin
+          const dens = (sm.dens - 0.5) * CONFIG.CONTRAST + 0.5;
+          const useCobalt = sm.cob > (1 - CONFIG.COBALT_AMT);
+          ramp(dens * CONFIG.DENSITY, useCobalt ? COBALT : ORANGE, cx, cy, pick);
+          const i = (cy * cols + cx) * 4;
+          if (pick.c) {
+            d[i] = pick.c[0]; d[i + 1] = pick.c[1]; d[i + 2] = pick.c[2];
+            d[i + 3] = opaque;
+          } else {
+            d[i + 3] = 0;
+          }
+        }
+      }
+      // upload only the rows we recomputed; the rest of the (tall) buffer keeps
+      // its last frame and never needs re-sending to the GPU.
+      if (cyMax > cyMin) ctx.putImageData(img, 0, 0, 0, cyMin, cols, cyMax - cyMin);
+    }
+    window.addEventListener('resize', () => { resize(); if (reduce) paint(0, true); });
+
+    resize();
+    if (reduce) {
+      paint(0, true);                 // one static, full frame — no motion
+      return;
+    }
+
+    // Only animate while the section is actually on screen. It lives far down
+    // the page, so off-screen this loop costs literally nothing — the single
+    // biggest win for weak devices/battery. We also cap repaints to FPS, since
+    // a slow drift gains nothing from 60fps. rootMargin pre-warms it just
+    // before it scrolls into view so there's no pop-in.
+    const start = performance.now();
+    const minDelta = 1000 / CONFIG.FPS;
+    let running = false, raf = 0, last = 0;
+    function loop(now) {
+      if (!running) return;
+      raf = requestAnimationFrame(loop);
+      if (!cssDriven) setTransform();        // JS parallax fallback; CSS path is
+                                             // handled on the compositor, no JS
+      if (now - last < minDelta) return;     // field redraw stays FPS-capped
+      last = now;
+      paint((now - start) / 1000 * CONFIG.FLOW * 20, false);
+    }
+    new IntersectionObserver((entries) => {
+      const on = entries[0].isIntersecting;
+      if (on && !running) { running = true; last = 0; raf = requestAnimationFrame(loop); }
+      else if (!on && running) { running = false; cancelAnimationFrame(raf); }
+    }, { rootMargin: '200px 0px' }).observe(about);
   })();
   </script>
 
