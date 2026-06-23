@@ -1998,8 +1998,8 @@
     // ── the ONE place to tune the effect ───────────────────────────────
     const CONFIG = {
       CELL:        9,     // px per dither cell (chunky). Smaller = finer grain.
-      SCALE:       0.07,  // feature size: lower = bigger, more stretched-out clouds.
-      WARP:        2.6,   // domain-warp strength — how hard the field is smeared into
+      SCALE:       0.03,  // feature size: lower = bigger, more stretched-out clouds.
+      WARP:        5.7,   // domain-warp strength — how hard the field is smeared into
                           //   flowing smoke wisps. 0 = plain (blobby) fractal noise.
       OCT:         4,     // fractal detail in octaves. Higher = wispier (and costlier).
       CONTRAST:    1.7,   // expands mids toward cream / deep pumpkin so wisps read.
@@ -2009,7 +2009,7 @@
                           //   page, 0 = pinned in the viewport (max depth). 0.4 =
                           //   a calm, slow far-away layer.
       OPACITY:     0.55,  // overall layer opacity (medium — never fights the text).
-      COBALT_AMT:  0.18,  // how much of the field tips into cobalt vs. orange (0–1).
+      COBALT_AMT:  0.20,  // how much of the field tips into cobalt vs. orange (0–1).
       DENSITY:     1.05,  // pigment coverage multiplier; >1 fills more cells.
       // palette ramps, dark → light. Cell 0 stays transparent so the page's
       // cream canvas shows through (and reads only in the resume's margins).
