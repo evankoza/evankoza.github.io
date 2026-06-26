@@ -2288,6 +2288,20 @@
         coverRaw: true,
       },
       {
+        label: "ESP32 ChessBot",
+        title: "ESP32 ChessBot",
+        lead: "A self-playing chess engine on a tiny ESP32 + TFT screen: one engine plays both sides, forever.",
+        description: "A complete chess engine running on an ideaspark ESP32 with a 1.9\" ST7789 display. One engine plays both colours — every quarter-second it searches for the side to move, plays it, and hands over the clock. It has full legal move generation (castling, en passant, under-promotion, check detection), a material + piece-square evaluation, and a depth-3 alpha-beta search with captures ordered first. It picks randomly among near-best moves so no two games look alike, renders a chess.com-style eval bar, and starts a fresh game on every checkmate, stalemate, or draw. No networking, no opening book — the whole thing lives in ~700 lines on the microcontroller.",
+        objective: "Get acquainted with the ESP32 + ST7789 hardware by fitting a real chess engine — search, evaluation, and a flicker-free renderer — into a microcontroller.",
+        stack: ["C++", "ESP32 / Arduino", "TFT_eSPI", "Alpha-beta search"],
+        links: [
+          { label: "View on GitHub", href: "https://github.com/evankoza/chessbot" },
+        ],
+        photos: [],
+        cover: "assets/covers/chessbot.webp",
+        coverRaw: true,
+      },
+      {
         label: "Lissajous Toy",
         title: "Lissajous Toy",
         lead: "Click any letter to reshape its curve — a playground for the harmonic curves behind the homepage banner.",

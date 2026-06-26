@@ -311,6 +311,15 @@ def src_data(size=1000):
     return img.resize((size, size), Image.LANCZOS)
 
 
+# ---------------------------------------------------------------- chessbot
+# The ChessBot king: the top-left (solid) cell of the chess sprite sheet, saved as a
+# clean dark-on-white crop in covers-src. A bold solid mass -> reads great in the
+# block grid (no thin linework to vanish). Pairs with the ESP32 ChessBot repo.
+def src_chess(size=1000):
+    king = Image.open(r"C:\website\tools\covers-src\chessbot-king.png").convert("L")
+    return king.resize((size, size), Image.LANCZOS)
+
+
 if __name__ == "__main__":
     C = r"C:\website\assets\covers"
     S = r"C:\website\tools\covers-src"   # clean pumpkin-on-parchment originals
@@ -318,6 +327,7 @@ if __name__ == "__main__":
     asciify(src_eternal(), C + r"\eternal-fm.webp")
     asciify(src_invoice(), C + r"\invoice.webp")
     asciify(src_data(),    C + r"\data-analysis.webp")   # new bar chart (kept)
+    asciify(src_chess(),   C + r"\chessbot.webp")         # ESP32 ChessBot king
     asciify(src_eye(),     C + r"\eye.webp", cut=205)     # vision1 eye easter egg (1/100 wall tile)
     # lissajous / discord / make-your-own: re-screen the original letter-ASCII art
     # (the look that was working — keep these on the reascii path)
