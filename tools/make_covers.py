@@ -290,6 +290,62 @@ def src_eye(size=1000):
     return g.resize((size, size), Image.LANCZOS)
 
 
+# ---------------------------------------------------------------- eye, closed (favicon blink)
+# A shut version of the vision1 eye for the tab-blur favicon swap. No closed-eye
+# photo exists, so it is drawn: a fat lash-line arc, a lid crease, and tapered
+# lashes as solid masses (thin strokes vanish in the coarse grid), with flat greys
+# picked to land on the ░▒▓ ramp steps, then screened by the SAME asciify pass as
+# the open eye so the two favicons share one texture.
+def src_eye_closed(size=1000):
+    W = H = size * SS
+    img = Image.new("L", (W, H), 255)
+    d = ImageDraw.Draw(img)
+
+    def qbez(p0, c, p1, t):
+        x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * c[0] + t * t * p1[0]
+        y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * c[1] + t * t * p1[1]
+        return x, y
+
+    def stroke(p0, c, p1, r_tip, r_mid, fill, n=200):
+        """Quadratic-bezier stroke stamped from circles: fat middle, tapered tips."""
+        for i in range(n + 1):
+            t = i / n
+            x, y = qbez(p0, c, p1, t)
+            r = r_tip + (r_mid - r_tip) * math.sin(t * math.pi)
+            d.ellipse([x - r, y - r, x + r, y + r], fill=fill)
+
+    # the shut lid is a collapsed almond: top curve and lash line share the same
+    # corner points, so the silhouette echoes the open eye's almond
+    corners = ((0.10 * W, 0.46 * H), (0.90 * W, 0.46 * H))
+    top = (corners[0], (0.50 * W, 0.30 * H), corners[1])
+    mid = (corners[0], (0.50 * W, 0.47 * H), corners[1])
+    lash = (corners[0], (0.50 * W, 0.62 * H), corners[1])
+
+    def lens(a, b, fill):
+        pts = [qbez(*a, i / 60) for i in range(61)] + \
+              [qbez(*b, i / 60) for i in range(60, -1, -1)]
+        d.polygon(pts, fill=fill)
+
+    lens(top, lash, 150)   # whole lid  -> ░ after the screen
+    lens(mid, lash, 115)   # darker toward the shut edge -> ▒
+    stroke(*lash, W * 0.015, W * 0.033, 0)             # lash line -> █
+
+    # lashes fanning down-outward off the lash line
+    for t in (0.18, 0.34, 0.50, 0.66, 0.82):
+        x, y = qbez(*lash, t)
+        dx = (x - 0.5 * W) * 0.22
+        dy = W * 0.075
+        m = 40
+        for j in range(m + 1):
+            s = j / m
+            r = W * 0.018 * (1 - s) + W * 0.004 * s
+            d.ellipse([x + dx * s - r, y + dy * s - r,
+                       x + dx * s + r, y + dy * s + r], fill=0)
+
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0020))
+    return img.resize((size, size), Image.LANCZOS)
+
+
 # ---------------------------------------------------------------- data analysis
 def src_data(size=1000):
     """A clean vertical bar chart — solid bars sit crisp in the block grid."""
@@ -329,6 +385,7 @@ if __name__ == "__main__":
     asciify(src_data(),    C + r"\data-analysis.webp")   # new bar chart (kept)
     asciify(src_chess(),   C + r"\chessbot.webp")         # ESP32 ChessBot king
     asciify(src_eye(),     C + r"\eye.webp", cut=205)     # vision1 eye easter egg (1/100 wall tile)
+    asciify(src_eye_closed(), C + r"\eye-closed.webp", cut=205)  # favicon blink (tab blur)
     # lissajous / discord / make-your-own: re-screen the original letter-ASCII art
     # (the look that was working — keep these on the reascii path)
     for name in ("lissajous", "discord", "make-your-own"):
