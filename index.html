@@ -11,19 +11,21 @@
 
 <!-- Favicons: SVG for modern browsers, .ico fallback (also what Google uses), PNG for iOS -->
 <link rel="icon" href="/favicon.ico" sizes="any" />
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" id="favicon" />
+<link rel="icon" type="image/svg+xml" href="/favicon-closed.svg" id="favicon" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <script>
-/* The eye closes when you look away: swap favicons on tab/window focus. */
+/* The eye OPENS when you look away (it only watches while you're gone):
+   swap favicons on tab/window focus. */
 (function () {
   var icon = document.getElementById('favicon');
   function update() {
     var away = document.hidden || !document.hasFocus();
-    icon.href = away ? '/favicon-closed.svg' : '/favicon.svg';
+    icon.href = away ? '/favicon.svg' : '/favicon-closed.svg';
   }
   window.addEventListener('focus', update);
   window.addEventListener('blur', update);
   document.addEventListener('visibilitychange', update);
+  update();
 })();
 </script>
 
