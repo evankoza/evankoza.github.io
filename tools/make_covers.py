@@ -346,6 +346,68 @@ def src_eye_closed(size=1000):
     return img.resize((size, size), Image.LANCZOS)
 
 
+# ---------------------------------------------------------------- receipt printer
+# The thermal print station: a solid printer body with a receipt rising out of
+# the top — thick frame + fat text bars, torn zigzag top edge. All solid masses
+# (frame/bars as fat rectangles) so nothing vanishes in the coarse block grid.
+def src_printer(size=1000):
+    W = H = size * SS
+    img = Image.new("L", (W, H), 255)
+    d = ImageDraw.Draw(img)
+    rng = random.Random(7)
+
+    frame = max(4, int(W * 0.020))
+
+    # receipt strip: rises from the printer mouth to a torn top edge
+    rw = W * 0.44
+    rx0 = (W - rw) / 2
+    ry_top = H * 0.06
+    ry_bot = H * 0.62                     # where it disappears into the printer
+
+    # torn top edge: filled zigzag band across the strip
+    teeth = 7
+    th = H * 0.035
+    pts = [(rx0, ry_top + th)]
+    for i in range(teeth + 1):
+        x = rx0 + rw * i / teeth
+        y = ry_top if i % 2 == 0 else ry_top + th
+        pts.append((x, y))
+    pts += [(rx0 + rw, ry_top + th + frame), (rx0, ry_top + th + frame)]
+    d.polygon(pts, fill=0)
+
+    # receipt side edges (thick)
+    d.rectangle([rx0, ry_top + th, rx0 + frame, ry_bot], fill=0)
+    d.rectangle([rx0 + rw - frame, ry_top + th, rx0 + rw, ry_bot], fill=0)
+
+    # fat "printed text" bars inside the receipt, widths jittered
+    pad = rw * 0.14
+    y = ry_top + th + H * 0.045
+    bar_h = H * 0.030
+    while y + bar_h < ry_bot - H * 0.02:
+        wfrac = 0.55 + rng.random() * 0.45
+        left = rng.random() < 0.75
+        x0 = rx0 + pad if left else rx0 + rw - pad - (rw - 2 * pad) * wfrac
+        d.rectangle([x0, y, x0 + (rw - 2 * pad) * wfrac, y + bar_h], fill=0)
+        y += bar_h * 1.9
+
+    # printer body: solid slab with rounded top corners; the receipt feeds in
+    bw = W * 0.78
+    bx0 = (W - bw) / 2
+    by0 = ry_bot
+    by1 = H * 0.92
+    d.rounded_rectangle([bx0, by0, bx0 + bw, by1], radius=W * 0.045, fill=0)
+    # mouth: a white slot the receipt emerges from (slightly wider than the strip)
+    slot_pad = frame * 1.6
+    d.rectangle([rx0 - slot_pad, by0 - frame * 0.5, rx0 + rw + slot_pad, by0 + H * 0.028], fill=255)
+    # feed button: white dot on the body, lower-right
+    br = W * 0.036
+    bcx, bcy = bx0 + bw * 0.82, (by0 + by1) / 2 + H * 0.035
+    d.ellipse([bcx - br, bcy - br, bcx + br, bcy + br], fill=255)
+
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0022))
+    return img.resize((size, size), Image.LANCZOS)
+
+
 # ---------------------------------------------------------------- data analysis
 def src_data(size=1000):
     """A clean vertical bar chart — solid bars sit crisp in the block grid."""
@@ -384,6 +446,7 @@ if __name__ == "__main__":
     asciify(src_invoice(), C + r"\invoice.webp")
     asciify(src_data(),    C + r"\data-analysis.webp")   # new bar chart (kept)
     asciify(src_chess(),   C + r"\chessbot.webp")         # ESP32 ChessBot king
+    asciify(src_printer(), C + r"\printer.webp")          # thermal receipt printer
     asciify(src_eye(),     C + r"\eye.webp", cut=205)     # vision1 eye easter egg (1/100 wall tile)
     asciify(src_eye_closed(), C + r"\eye-closed.webp", cut=205)  # favicon blink (tab blur)
     # lissajous / discord / make-your-own: re-screen the original letter-ASCII art

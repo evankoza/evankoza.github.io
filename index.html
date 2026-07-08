@@ -2319,6 +2319,21 @@
         coverRaw: true,
       },
       {
+        label: "Receipt Printer",
+        title: "Receipt Printer — Print at My House",
+        lead: "Design a receipt in your browser and it prints — physically, on real paper — on a thermal printer sitting in my house.",
+        description: "A live print station: the page composes text and images on a 384-pixel-wide canvas, dithers it client-side (Floyd–Steinberg, Atkinson, Bayer, halftone, crosshatch — what you see is pixel-for-pixel what prints), and sends a packed 1-bit bitmap to a relay on my home server. An ESP32 picks the job up over an outbound WebSocket and streams ESC/POS raster commands to an MPT-II Bluetooth receipt printer. Rate-limited so the internet can't burn through my paper roll too fast.",
+        objective: "Close the loop between a public web page and a physical machine in my house — browser to server to microcontroller to paper.",
+        stack: ["Vanilla JS", "HTML Canvas", "Node.js", "WebSocket", "ESP32 / C++", "ESC/POS"],
+        links: [
+          { label: "Launch demo", href: "experiments/print.html" },
+          { label: "Source", href: "https://github.com/evankoza/receipt-printer" },
+        ],
+        photos: [],
+        cover: "assets/covers/printer.webp",
+        coverRaw: true,
+      },
+      {
         label: "Lissajous Toy",
         title: "Lissajous Toy",
         lead: "Click any letter to reshape its curve — a playground for the harmonic curves behind the homepage banner.",
