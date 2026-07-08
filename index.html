@@ -457,9 +457,8 @@
      would not propagate into its inline-flex items */
   .contact-list .print-txt {
     display: inline;   /* the shared span rule's inline-flex would block the underline */
-    text-decoration: underline;
-    text-decoration-color: var(--pumpkin);
-    text-decoration-thickness: 2px;
+    color: inherit;    /* the shared span rule pins color, which breaks the row hover */
+    text-decoration: underline dotted var(--pumpkin);
     text-underline-offset: 3px;
   }
   .contact-list .tag {
