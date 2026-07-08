@@ -3,9 +3,8 @@
 
 const RELAY_URL =
   ['localhost', '127.0.0.1'].includes(location.hostname) ? 'http://localhost:8377' // local dev
-  // TEMP soft-launch POC: relay is a Cloudflare quick tunnel to Evan's laptop.
-  // Swap back to 'https://print.evankoza.com' once the Ubuntu deploy lands.
-  : location.hostname.endsWith('evankoza.com') ? 'https://cardiff-verbal-arthur-cole.trycloudflare.com'
+  // Relay runs on the home Ubuntu server, exposed via Tailscale Funnel.
+  : location.hostname.endsWith('evankoza.com') ? 'https://kohzuhserver.tail2b2f49.ts.net'
   : '';                                    // page served by the relay itself (tunnel): same origin
 
 const W = 384;
