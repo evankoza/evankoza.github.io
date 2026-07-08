@@ -3,8 +3,9 @@
 
 const RELAY_URL =
   ['localhost', '127.0.0.1'].includes(location.hostname) ? 'http://localhost:8377' // local dev
-  // Relay runs on the home Ubuntu server, exposed via Tailscale Funnel.
-  : location.hostname.endsWith('evankoza.com') ? 'https://kohzuhserver.tail2b2f49.ts.net'
+  // Relay runs on Evan's laptop, exposed via a Cloudflare quick tunnel.
+  // (Home-server deploy rolled back; quick-tunnel URL changes on each restart.)
+  : location.hostname.endsWith('evankoza.com') ? 'https://cargo-deutschland-ten-precipitation.trycloudflare.com'
   : '';                                    // page served by the relay itself (tunnel): same origin
 
 const W = 384;
