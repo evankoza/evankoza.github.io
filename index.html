@@ -451,6 +451,22 @@
     transition: color .2s ease;
   }
   .loc-btn:hover, .loc-btn:focus-visible { color: var(--pumpkin); }
+  /* the printer line is a real contact method (it prints in Evan's house),
+     so it gets to shout a little: pumpkin ink + a pulsing "live" dot. */
+  .contact-list a.print-link { color: var(--pumpkin); font-weight: 600; }
+  .contact-list a.print-link:hover { color: var(--pumpkin-bright, #F2622E); }
+  .contact-list a.print-link .tag { color: var(--pumpkin); }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--pumpkin);
+    animation: live-pulse 1.6s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  @keyframes live-pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(201, 80, 0, 0.35); }
+    50%      { opacity: 0.55; box-shadow: 0 0 0 5px rgba(201, 80, 0, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
   .contact-list .tag {
     font-family: var(--mono);
     font-size: 10px;
@@ -1253,6 +1269,7 @@
           <ul class="contact-list">
             <li><a href="mailto:evankoza@hotmail.com"><span class="tag">@</span>evankoza@hotmail.com</a></li>
             <li><a href="tel:+12263785926"><span class="tag">tel</span>+1 (226) 378-5926</a></li>
+            <li><a class="print-link" href="experiments/print.html"><span class="tag">prt</span>print me a note<span class="live-dot" aria-hidden="true"></span></a></li>
             <li><a href="https://x.com/koh_zuh" target="_blank" rel="noopener"><span class="tag">x</span>@koh_zuh</a></li>
             <li><a href="https://www.linkedin.com/in/evankoza" target="_blank" rel="noopener"><span class="tag">in</span>evankoza</a></li>
             <li><a href="https://github.com/evankoza" target="_blank" rel="noopener"><span class="tag">gh</span>evankoza</a></li>
