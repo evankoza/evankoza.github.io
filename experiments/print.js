@@ -495,7 +495,7 @@ async function watchJob(id) {
     if (state.startsWith('error')) { setMsg(`✗ ${state}`, 'err'); return; }
     setMsg(state === 'printing' ? 'Printing…'
       : printerReady ? 'Queued…'
-      : 'Queued — the printer is offline right now; it will print the moment it returns. Safe to close the page.');
+      : 'Queued — the printer is out right now; it will print the moment it's back. Safe to close the page.');
   }
   setMsg('Still queued — it will print when the printer comes back online.', 'ok');
 }
@@ -509,7 +509,7 @@ async function pollStatus() {
     const s = await res.json();
     printerReady = s.bridgeOnline && s.printerOnline;
     el.innerHTML = `<span class="dot ${printerReady ? 'on' : 'off'}"></span>` +
-      (printerReady ? 'printer online' : s.bridgeOnline ? 'bridge up, printer off' : 'printer offline');
+      (printerReady ? 'in house' : 'out');
     $('offlineNote').hidden = printerReady;
   } catch {
     printerReady = false;
