@@ -333,19 +333,19 @@
     will-change: transform;
   }
   /* Compositor-driven parallax. Where the browser supports scroll-driven
-     animations, this CSS animation translates the dither layer in lockstep with
+     animations, a CSS animation translates the dither layer in lockstep with
      scroll — on the GPU, synced at the hardware level, with ZERO JavaScript in
      the scroll path. That's the only way to fully kill the main-thread lag /
      rubber-banding; JS scroll parallax is always a frame behind the compositor.
-     `--dither-pad` (the travel distance) is supplied by JS on resize. The view
-     timeline runs the keyframes across the section's full pass through the
-     viewport (cover 0% → 100%): -pad as it enters from the bottom, +pad as it
-     exits the top, so the layer reads as a slower, far-away plane.
+     The @keyframes (about-dither-parallax) are injected by JS on resize with
+     CONCRETE pixel values — keyframes that resolve through var()/calc() custom
+     properties can demote the animation off the compositor in some engines,
+     which puts it back on the (busy) main thread and brings the scroll lag
+     right back on weak devices. The view timeline runs the keyframes across
+     the section's full pass through the viewport (cover 0% → 100%): -travel as
+     it enters from the bottom, +travel as it exits the top, so the layer reads
+     as a slower, far-away plane.
      Browsers without support fall back to the JS rAF transform (see script). */
-  @keyframes about-dither-parallax {
-    from { transform: translateY(calc(-1 * var(--dither-pad, 0px))); }
-    to   { transform: translateY(var(--dither-pad, 0px)); }
-  }
   @supports (animation-timeline: scroll()) {
     .about { view-timeline-name: --about-vt; view-timeline-axis: block; }
     .about-dither {
@@ -2034,6 +2034,11 @@
       CONTRAST:    1.7,   // expands mids toward cream / deep pumpkin so wisps read.
       FLOW:        0.05,  // how fast the smoke drifts and evolves over time.
       FPS:         30,    // repaint cap — a slow drift needs nothing near 60.
+      BUDGET:      6,     // ms of field math allowed per frame. A band repaint
+                          //   that needs more spreads across several frames, so
+                          //   scrolling never waits on the noise loop (the old
+                          //   single-shot repaint was what dragged the parallax
+                          //   behind the finger on weak devices).
       SPEED:       0.4,   // apparent scroll speed of the field: 1 = locked to the
                           //   page, 0 = pinned in the viewport (max depth). 0.4 =
                           //   a calm, slow far-away layer.
@@ -2066,19 +2071,32 @@
 
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Where scroll-driven animations exist, CSS moves the layer on the compositor
-    // (see <style>) — perfectly smooth, no scroll lag. Only older browsers fall
-    // back to driving the transform from JS.
-    const cssDriven = !!(window.CSS && CSS.supports && CSS.supports('animation-timeline: scroll()'));
+    // (see <style>) — perfectly smooth, no scroll lag. Older browsers fall back
+    // to driving the transform from JS, and so do environments that CLAIM
+    // support but never actually run the animation (see verifyCssDriven).
+    let cssDriven = !!(window.CSS && CSS.supports && CSS.supports('animation-timeline: scroll()'));
     const tSlope = 1 - CONFIG.SPEED;            // px of layer travel per px scrolled
+    // Mobile URL bars collapse/expand DURING scroll and fire height-only resize
+    // events; height wobble up to this many px is absorbed by bitmap headroom
+    // instead of a rebuild (see the resize listener below).
+    const VH_SLACK = 180;
+    // the compositor-path @keyframes live here, (re)written with concrete pixel
+    // values on every rebuild — see the note above @supports in <style>.
+    const kf = document.createElement('style');
+    document.head.appendChild(kf);
     let cols = 0, rows = 0, img = null, pad = 0, secH = 0, curT = 0, tConst = 0, secTopAbs = 0, baseConst = 0;
+    let lastW = 0, lastVH = 0, pass = null, last = 0;
 
     function resize() {
       const w = about.clientWidth, vh = window.innerHeight;
+      lastW = w; lastVH = vh;
       secH = about.clientHeight;
-      // Oversize the layer by the parallax travel so translating it never
-      // exposes an edge: over a full scroll-through the layer shifts by
-      // (1 - SPEED) × (section + viewport); pad each side by half of that.
-      pad = Math.ceil(tSlope * (secH + vh) / 2) + CONFIG.CELL;
+      // over a full scroll-through the layer shifts by (1 - SPEED) ×
+      // (section + viewport); each side travels half of that.
+      const travel = Math.ceil(tSlope * (secH + vh) / 2);
+      // Oversize the layer by the travel — so translating it never exposes an
+      // edge — plus slack for the URL-bar height wobble we deliberately ignore.
+      pad = travel + Math.ceil(tSlope * VH_SLACK) + CONFIG.CELL;
       const h = secH + pad * 2;
       canvas.style.top = -pad + 'px';
       canvas.style.height = h + 'px';
@@ -2087,14 +2105,16 @@
       // render into a tiny cols×rows buffer, then let CSS scale it up crisply
       canvas.width = cols; canvas.height = rows;
       img = ctx.createImageData(cols, rows);
+      pass = null; last = 0;                    // buffer is fresh — repaint asap
       // document-absolute top of the section. With it, the transform and the
       // visible-band math are pure functions of window.scrollY — no layout-
       // forcing rect reads anywhere in the animation loop.
       secTopAbs = about.getBoundingClientRect().top + window.scrollY;
       tConst = tSlope * (secTopAbs + secH / 2 - vh / 2);
       baseConst = pad + tConst - secTopAbs;     // band: base = baseConst + scrollY·SPEED
-      // hand the parallax travel to the CSS keyframes (compositor path)
-      canvas.style.setProperty('--dither-pad', pad + 'px');
+      // hand the travel to the compositor path as concrete-pixel keyframes
+      kf.textContent = '@keyframes about-dither-parallax{from{transform:translateY(-'
+        + travel + 'px)}to{transform:translateY(' + travel + 'px)}}';
       if (!cssDriven) setTransform();           // JS fallback positions it now
     }
 
@@ -2151,50 +2171,46 @@
 
     const pick = { c: null };
     const sm = { dens: 0, cob: 0 };
-    function paint(t, full) {
-      // The field is sampled in canvas-LOCAL coordinates (no scroll term) so the
-      // smoke, the pixel grid and the Bayer dither are all baked into the one
-      // bitmap and move together — parallax is handled by translating the layer.
-      // Only the rows currently visible through the window get computed; the
-      // canvas is much taller than the viewport, so the rest is wasted work.
-      let cyMin = 0, cyMax = rows;
-      if (!full) {
-        const vh = window.innerHeight, margin = vh * 0.4;
-        // local-y of the top visible row — a pure function of scroll that matches
-        // the layer's current translate (whether driven by CSS or the JS fallback).
-        const base = baseConst + window.scrollY * CONFIG.SPEED;
-        cyMin = Math.max(0, Math.floor((base - margin) / CONFIG.CELL));
-        cyMax = Math.min(rows, Math.ceil((base + vh + margin) / CONFIG.CELL));
-      }
-      const opaque = Math.round(255 * CONFIG.OPACITY);
-      const d = img.data;
-      for (let cy = cyMin; cy < cyMax; cy++) {
-        const gy = cy * CONFIG.SCALE;
-        for (let cx = 0; cx < cols; cx++) {
-          const gx = cx * CONFIG.SCALE;
-          sample(gx, gy, t, sm);
-          // expand contrast around the mid so wisps read as cream→deep pumpkin
-          const dens = (sm.dens - 0.5) * CONFIG.CONTRAST + 0.5;
-          const useCobalt = sm.cob > (1 - CONFIG.COBALT_AMT);
-          ramp(dens * CONFIG.DENSITY, useCobalt ? COBALT : ORANGE, cx, cy, pick);
-          const i = (cy * cols + cx) * 4;
-          if (pick.c) {
-            d[i] = pick.c[0]; d[i + 1] = pick.c[1]; d[i + 2] = pick.c[2];
-            d[i + 3] = opaque;
-          } else {
-            d[i + 3] = 0;
-          }
+    // The field is sampled in canvas-LOCAL coordinates (no scroll term) so the
+    // smoke, the pixel grid and the Bayer dither are all baked into the one
+    // bitmap and move together — parallax is handled by translating the layer.
+    function paintRow(cy, t) {
+      const d = img.data, opaque = Math.round(255 * CONFIG.OPACITY);
+      const gy = cy * CONFIG.SCALE;
+      for (let cx = 0; cx < cols; cx++) {
+        const gx = cx * CONFIG.SCALE;
+        sample(gx, gy, t, sm);
+        // expand contrast around the mid so wisps read as cream→deep pumpkin
+        const dens = (sm.dens - 0.5) * CONFIG.CONTRAST + 0.5;
+        const useCobalt = sm.cob > (1 - CONFIG.COBALT_AMT);
+        ramp(dens * CONFIG.DENSITY, useCobalt ? COBALT : ORANGE, cx, cy, pick);
+        const i = (cy * cols + cx) * 4;
+        if (pick.c) {
+          d[i] = pick.c[0]; d[i + 1] = pick.c[1]; d[i + 2] = pick.c[2];
+          d[i + 3] = opaque;
+        } else {
+          d[i + 3] = 0;
         }
       }
-      // upload only the rows we recomputed; the rest of the (tall) buffer keeps
-      // its last frame and never needs re-sending to the GPU.
-      if (cyMax > cyMin) ctx.putImageData(img, 0, 0, 0, cyMin, cols, cyMax - cyMin);
     }
-    window.addEventListener('resize', () => { resize(); if (reduce) paint(0, true); });
+    // one synchronous full-height frame — only for prefers-reduced-motion
+    function paint(t) {
+      for (let cy = 0; cy < rows; cy++) paintRow(cy, t);
+      ctx.putImageData(img, 0, 0);
+    }
+    window.addEventListener('resize', () => {
+      // Height-only resizes are the mobile URL bar showing/hiding mid-scroll;
+      // rebuilding right then (canvas realloc + full repaint + a forced layout
+      // read) is itself a scroll hitch, and the bitmap already carries VH_SLACK
+      // of headroom for exactly this — so skip them.
+      if (about.clientWidth === lastW && Math.abs(window.innerHeight - lastVH) <= VH_SLACK) return;
+      resize();
+      if (reduce) paint(0);
+    });
 
     resize();
     if (reduce) {
-      paint(0, true);                 // one static, full frame — no motion
+      paint(0);                       // one static, full frame — no motion
       return;
     }
 
@@ -2205,15 +2221,58 @@
     // before it scrolls into view so there's no pop-in.
     const start = performance.now();
     const minDelta = 1000 / CONFIG.FPS;
-    let running = false, raf = 0, last = 0;
+    let running = false, raf = 0;
+    // Begin a repaint pass over the rows currently visible through the window
+    // (plus margin); the canvas is much taller than the viewport, so the rest
+    // is wasted work.
+    function startPass(now) {
+      last = now;
+      const vh = window.innerHeight, margin = vh * 0.4;
+      // local-y of the top visible row — a pure function of scroll that matches
+      // the layer's current translate (whether driven by CSS or the JS fallback).
+      const base = baseConst + window.scrollY * CONFIG.SPEED;
+      const cy = Math.max(0, Math.floor((base - margin) / CONFIG.CELL));
+      const cyMax = Math.min(rows, Math.ceil((base + vh + margin) / CONFIG.CELL));
+      if (cyMax > cy) pass = { t: (now - start) / 1000 * CONFIG.FLOW * 20, cy, cyMax };
+    }
+    // Paint as many rows as fit in BUDGET ms, then yield the frame. Fast
+    // machines still land the whole band in one chunk; weak devices spread it
+    // across a few frames instead of blocking the main thread — the blocking
+    // was what dragged the JS-fallback transform (and any main-thread-bound
+    // scroll animation) behind the user's finger.
+    function paintChunk() {
+      const from = pass.cy, deadline = performance.now() + CONFIG.BUDGET;
+      do { paintRow(pass.cy++, pass.t); }
+      while (pass.cy < pass.cyMax && performance.now() < deadline);
+      // upload only the freshly computed rows; the rest of the (tall) buffer
+      // keeps its last frame and never needs re-sending to the GPU.
+      ctx.putImageData(img, 0, 0, 0, from, cols, pass.cy - from);
+      if (pass.cy >= pass.cyMax) pass = null;
+    }
+    // TRUST BUT VERIFY the compositor path. Some environments (in-app webviews
+    // especially) pass the CSS.supports probe yet never actually drive
+    // scroll-driven animations — the animation sits play-pending forever and
+    // the layer never moves. Once the section is on screen the timeline must
+    // be live within a frame or two; if it still hasn't produced a time after
+    // a handful, the animation is dead there — demote to the JS fallback.
+    let cssCheck = 0;                        // frames spent verifying; -1 = settled
+    function verifyCssDriven() {
+      const a = canvas.getAnimations().find(x => x.animationName === 'about-dither-parallax');
+      if (a && a.currentTime !== null) { cssCheck = -1; return; }   // driving ✓
+      if (++cssCheck > 8) {
+        cssCheck = -1; cssDriven = false;
+        canvas.style.animation = 'none';     // clear the dead animation
+        setTransform();                      // and take over from JS
+      }
+    }
     function loop(now) {
       if (!running) return;
       raf = requestAnimationFrame(loop);
       if (!cssDriven) setTransform();        // JS parallax fallback; CSS path is
                                              // handled on the compositor, no JS
-      if (now - last < minDelta) return;     // field redraw stays FPS-capped
-      last = now;
-      paint((now - start) / 1000 * CONFIG.FLOW * 20, false);
+      else if (cssCheck >= 0) verifyCssDriven();
+      if (!pass && now - last >= minDelta) startPass(now);  // stays FPS-capped
+      if (pass) paintChunk();
     }
     new IntersectionObserver((entries) => {
       const on = entries[0].isIntersecting;
