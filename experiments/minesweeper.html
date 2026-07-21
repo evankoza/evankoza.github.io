@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Infinite Minesweeper — Evan Koza</title>
+<meta name="description" content="An endless, chunk-generated minesweeper you can pan forever. Drag to explore, clear a chunk to light it up. A compile-style toy by Evan Koza." />
+<link rel="canonical" href="https://evankoza.com/experiments/minesweeper.html" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Evan Koza" />
+<meta property="og:title" content="Infinite Minesweeper — Evan Koza" />
+<meta property="og:description" content="An endless, chunk-generated minesweeper you can pan forever. Drag, clear, and light up the void." />
+<meta property="og:url" content="https://evankoza.com/experiments/minesweeper.html" />
+<meta property="og:image" content="https://evankoza.com/assets/thumbnail.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<style>
+  :root{
+    /* warm paper palette — matches the homepage / make-your-own light pages */
+    --bg:#E4E0D6; --panel:#F4F2EB;
+    --hidden:#D8D2C4; --hidden-hi:#E7E2D6; --hidden-lo:#C1B8A5;
+    --revealed:#F4F2EB; --line:rgba(28,27,24,.28); --line-soft:rgba(28,27,24,.10); --txt:#1c1b18;
+    --accent:#C95000; --accent-bright:#F2622E;
+    --cleared:#F1E4D8; --mine-bg:#F0CFC5; --mine-fg:#B02A15;
+    --ink-muted:rgba(28,27,24,.58); --ink-faint:rgba(28,27,24,.40); --paper-line:rgba(28,27,24,.14);
+    --mono:ui-monospace,Menlo,Consolas,"SFMono-Regular","Liberation Mono",monospace;
+    --n1:#2f6fd0;--n2:#2e8b45;--n3:#C95000;--n4:#7a45c7;--n5:#c07a1e;--n6:#1b8f9c;--n7:#1c1b18;--n8:#6f685c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font-family:var(--mono);
+    -webkit-user-select:none;user-select:none;overflow:hidden;}
+  #boardWrap{height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  #board{position:relative;display:grid;background:var(--line-soft);
+    cursor:grab;touch-action:none;}
+  #board.drag{cursor:grabbing;}
+  .cell{display:flex;align-items:center;justify-content:center;
+    font-size:16px;font-weight:700;position:relative;overflow:hidden;}
+  .cell.hidden{background:var(--hidden);
+    border-top:1px solid var(--hidden-hi);border-left:1px solid var(--hidden-hi);
+    border-right:1px solid var(--hidden-lo);border-bottom:1px solid var(--hidden-lo);cursor:pointer;
+    transition:background .08s;}
+  .cell.hidden:hover{background:var(--hidden-hi);}
+  .cell.open{background:var(--revealed);border:1px solid var(--line-soft);}
+  .cell.open.cl{background:var(--cleared);box-shadow:inset 0 0 0 1px rgba(201,80,0,.22);}
+  .cell.mine{background:var(--mine-bg);color:var(--mine-fg);}
+  .cell.flag{color:var(--accent);}
+  .cell.reach.hidden{box-shadow:inset 0 0 0 1px rgba(201,80,0,.32);}
+  .cell.bl{border-left:2px solid var(--line);}
+  .cell.bt{border-top:2px solid var(--line);}
+  .n1{color:var(--n1)}.n2{color:var(--n2)}.n3{color:var(--n3)}.n4{color:var(--n4)}
+  .n5{color:var(--n5)}.n6{color:var(--n6)}.n7{color:var(--n7)}.n8{color:var(--n8)}
+
+  /* ── edge vignette: the infinite grid settles into the paper ──────── */
+  .vignette{position:fixed;inset:0;pointer-events:none;z-index:20;
+    background:radial-gradient(125% 125% at 50% 42%, transparent 55%, rgba(28,27,24,.10) 100%);}
+
+  /* ── compile-style chrome: minimal floating escape hatch (light) ──── */
+  .compile-chrome{position:fixed;top:14px;left:16px;z-index:60;
+    display:flex;align-items:center;gap:12px;font-family:var(--mono);pointer-events:none;}
+  .compile-chrome .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);}
+  .compile-chrome .eyebrow .prompt{color:var(--ink-faint);}
+  .compile-chrome a.nav{pointer-events:auto;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-muted);text-decoration:none;border:1px solid var(--paper-line);
+    border-radius:999px;padding:6px 12px;background:var(--panel);
+    transition:color .15s,border-color .15s,background .15s;}
+  .compile-chrome a.nav:hover{color:var(--accent);border-color:var(--accent);}
+
+  /* ── HUD: surfaces the stats the game was already tracking ────────── */
+  .hud{position:fixed;top:14px;right:16px;z-index:60;
+    display:flex;align-items:center;gap:14px;font-family:var(--mono);
+    font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-muted);border:1px solid var(--paper-line);
+    border-radius:999px;padding:6px 14px;background:var(--panel);}
+  .hud .stat{display:flex;align-items:center;gap:5px;white-space:nowrap;}
+  .hud .ic{color:var(--ink-faint);font-size:12px;}
+  .hud b{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums;}
+  @media (max-width:560px){ .hud{gap:10px;font-size:10px;padding:5px 11px;} }
+</style>
+</head>
+<body>
+<div id="boardWrap"><div id="board"></div></div>
+<div class="vignette"></div>
+
+<div class="compile-chrome">
+  <span class="eyebrow"><span class="prompt">~ $</span> ./minesweeper</span>
+  <a class="nav" href="https://evankoza.com/#return">&larr; Portfolio</a>
+</div>
+
+<div class="hud">
+  <span class="stat"><span class="ic">&#9671;</span> <b id="h-clear">0</b> cleared</span>
+  <span class="stat"><span class="ic">&#10007;</span> <b id="h-death">0</b> lost</span>
+  <span class="stat"><span class="ic">&#9873;</span> <b id="h-flag">0</b> flags</span>
+</div>
+
+<script>
+"use strict";
+(function(){
+const CH = 8;            // chunk size
+const MINES = 10;        // mines per chunk
+const CELL = 30;         // px
+const SAVE_KEY = "ims_save_v1";
+let COLS = 29, ROWS = 19;
+
+// ---- world state ----
+const chunks = new Map();   // "cx,cy" -> {mines:Set("x,y")}
+const cells  = new Map();   // "x,y"   -> {r:bool, f:bool}
+const cleared = new Set();  // "cx,cy" currently cleared
+const chunkReveals = new Map(); // "cx,cy" -> count of revealed cells (chunk unlocked when >0)
+let clearedTotal = 0, deaths = 0, flags = 0, revealedCount = 0;
+let camX = 0, camY = 0;
+let flashMines = null;
+
+const cxOf = x => Math.floor(x/CH);
+const key  = (x,y) => x+","+y;
+
+function getChunk(cx,cy){
+  const k = key(cx,cy);
+  let c = chunks.get(k);
+  if(!c){ c = genChunk(cx,cy,null); chunks.set(k,c); }
+  return c;
+}
+function genChunk(cx,cy,safe){
+  const bx = cx*CH, by = cy*CH;
+  const pool = [];
+  for(let ly=0; ly<CH; ly++) for(let lx=0; lx<CH; lx++){
+    const x = bx+lx, y = by+ly;
+    if(safe && Math.abs(x-safe.x)<=1 && Math.abs(y-safe.y)<=1) continue; // keep 3x3 clear
+    pool.push(key(x,y));
+  }
+  const n = Math.min(MINES, pool.length);
+  for(let i=0;i<n;i++){
+    const j = i + Math.floor(Math.random()*(pool.length-i));
+    const t = pool[i]; pool[i]=pool[j]; pool[j]=t;
+  }
+  return {mines:new Set(pool.slice(0,n))};
+}
+function mineAt(x,y){ return getChunk(cxOf(x),cxOf(y)).mines.has(key(x,y)); }
+function adj(x,y){
+  let n=0;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    if(dx||dy){ if(mineAt(x+dx,y+dy)) n++; }
+  }
+  return n;
+}
+function cell(x,y){
+  let c = cells.get(key(x,y));
+  if(!c){ c={r:false,f:false}; cells.set(key(x,y),c); }
+  return c;
+}
+function reachable(x,y){
+  if(chunkReveals.get(key(cxOf(x),cxOf(y)))>0) return true;   // whole chunk unlocked
+  const d=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(const [dx,dy] of d){                                     // or enter fresh chunk from a border
+    const c = cells.get(key(x+dx,y+dy));
+    if(c && c.r) return true;
+  }
+  return false;
+}
+
+// ---- reveal ----
+const touched = new Set();
+function floodReveal(sx,sy){
+  const stack=[[sx,sy]];
+  while(stack.length){
+    const [x,y]=stack.pop();
+    const c = cell(x,y);
+    if(c.r || c.f) continue;
+    c.r = true; c.f=false; revealedCount++;
+    const cck = key(cxOf(x),cxOf(y));
+    chunkReveals.set(cck, (chunkReveals.get(cck)||0)+1);
+    touched.add(cck);
+    if(adj(x,y)===0){
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+        if(dx||dy) stack.push([x+dx,y+dy]);
+      }
+    }
+  }
+}
+function userReveal(x,y){
+  const c = cell(x,y);
+  if(c.f) return;
+  if(c.r){ chord(x,y); return; }
+  if(!reachable(x,y)) return;
+  if(mineAt(x,y)){ die([[x,y]]); return; }
+  touched.clear();
+  floodReveal(x,y);
+  afterReveal();
+}
+function chord(x,y){
+  const n = adj(x,y);
+  if(n===0) return;
+  let f=0;
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    if((dx||dy) && cell(x+dx,y+dy).f) f++;
+  }
+  if(f!==n) return;
+  touched.clear();
+  const boom=[];
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    if(!dx&&!dy) continue;
+    const nx=x+dx, ny=y+dy, c=cell(nx,ny);
+    if(c.f||c.r) continue;
+    if(mineAt(nx,ny)) boom.push([nx,ny]);
+    else floodReveal(nx,ny);
+  }
+  if(boom.length) die(boom);
+  else afterReveal();
+}
+function afterReveal(){
+  for(const k of touched){
+    const [cx,cy]=k.split(",").map(Number);
+    if(chunkCleared(cx,cy)){
+      if(!cleared.has(k)){ cleared.add(k); clearedTotal++; }
+    }
+  }
+  render();
+}
+function chunkCleared(cx,cy){
+  const bx=cx*CH, by=cy*CH;
+  for(let ly=0;ly<CH;ly++)for(let lx=0;lx<CH;lx++){
+    const x=bx+lx,y=by+ly;
+    if(!mineAt(x,y)){ const c=cells.get(key(x,y)); if(!c||!c.r) return false; }
+  }
+  return true;
+}
+
+// ---- death / reset ----
+function die(minedCells){
+  deaths++;
+  const resetKeys = new Set();
+  const fm = new Set();
+  for(const [x,y] of minedCells){
+    const cx=cxOf(x), cy=cxOf(y), ck=key(cx,cy);
+    resetKeys.add(ck);
+    for(const m of getChunk(cx,cy).mines) fm.add(m);
+  }
+  flashMines = fm;
+  render();
+  setTimeout(()=>{
+    flashMines=null;
+    for(const ck of resetKeys){ const [cx,cy]=ck.split(",").map(Number); resetChunk(cx,cy); }
+    if(revealedCount===0) reseed(cxOf(minedCells[0][0]), cxOf(minedCells[0][1]));
+    render();
+  }, 550);
+}
+function resetChunk(cx,cy){
+  const bx=cx*CH, by=cy*CH, ck=key(cx,cy);
+  for(let ly=0;ly<CH;ly++)for(let lx=0;lx<CH;lx++){
+    const x=bx+lx,y=by+ly,k=key(x,y),c=cells.get(k);
+    if(c){ if(c.r) revealedCount--; if(c.f) flags--; cells.delete(k); }
+  }
+  chunkReveals.delete(ck);
+  cleared.delete(ck);
+  chunks.set(ck, genChunk(cx,cy,null));
+}
+function reseed(cx,cy){
+  const center={x:cx*CH+4,y:cy*CH+4};
+  chunks.set(key(cx,cy), genChunk(cx,cy,center));
+  touched.clear();
+  floodReveal(center.x,center.y);
+}
+
+// ---- flags ----
+function toggleFlag(x,y){
+  const c=cell(x,y);
+  if(c.r) return;
+  if(!c.f && !reachable(x,y)) return;
+  c.f=!c.f; flags += c.f?1:-1;
+  render();
+}
+
+// ---- persistence ----
+let saveTimer=null;
+function scheduleSave(){ if(saveTimer) return; saveTimer=setTimeout(()=>{saveTimer=null;saveNow();},400); }
+function saveNow(){
+  try{
+    const ch=[]; for(const [k,c] of chunks) ch.push([k, Array.from(c.mines)]);
+    const cl=[]; for(const [k,c] of cells){ if(c.r||c.f) cl.push([k,(c.r?1:0)|(c.f?2:0)]); }
+    localStorage.setItem(SAVE_KEY, JSON.stringify({v:1,ch,cl,clearedTotal,deaths,camX,camY}));
+  }catch(e){}
+}
+function load(){
+  try{
+    const s=localStorage.getItem(SAVE_KEY); if(!s) return false;
+    const d=JSON.parse(s); if(!d || d.v!==1) return false;
+    chunks.clear(); cells.clear(); cleared.clear(); chunkReveals.clear();
+    for(const [k,arr] of d.ch) chunks.set(k,{mines:new Set(arr)});
+    revealedCount=0; flags=0;
+    for(const [k,fl] of d.cl){
+      const r=!!(fl&1), f=!!(fl&2);
+      cells.set(k,{r,f});
+      if(r){ revealedCount++;
+        const [x,y]=k.split(",").map(Number);
+        const cck=key(cxOf(x),cxOf(y)); chunkReveals.set(cck,(chunkReveals.get(cck)||0)+1);
+      }
+      if(f) flags++;
+    }
+    clearedTotal=d.clearedTotal||0; deaths=d.deaths||0;
+    camX=d.camX||0; camY=d.camY||0;
+    for(const ck of chunkReveals.keys()){
+      const [cx,cy]=ck.split(",").map(Number);
+      if(chunkCleared(cx,cy)) cleared.add(ck);
+    }
+    return revealedCount>0;
+  }catch(e){ return false; }
+}
+window.addEventListener("beforeunload", saveNow);
+
+// ---- rendering ----
+const board=document.getElementById("board");
+function fitViewport(){
+  const w=window.innerWidth, h=window.innerHeight;
+  COLS = Math.ceil(w/CELL)+2;   // overfill so the grid bleeds off every edge
+  ROWS = Math.ceil(h/CELL)+2;
+  board.style.gridTemplateColumns = `repeat(${COLS},${CELL}px)`;
+  board.style.gridTemplateRows    = `repeat(${ROWS},${CELL}px)`;
+}
+function render(){
+  let html="";
+  for(let ry=0; ry<ROWS; ry++){
+    const y = camY+ry;
+    for(let rx=0; rx<COLS; rx++){
+      const x = camX+rx;
+      const k = key(x,y);
+      const c = cells.get(k);
+      const ck = key(cxOf(x),cxOf(y));
+      let cls="cell", txt="";
+      const border = (x%CH===0?" bl":"") + (y%CH===0?" bt":"");
+      if(flashMines && flashMines.has(k)){
+        cls+=" mine"+border; txt="✷";
+      } else if(c && c.r){
+        cls+=" open"+(cleared.has(ck)?" cl":"")+border;
+        const n=adj(x,y);
+        if(n>0){ txt=n; cls+=" n"+n; }
+      } else if(c && c.f){
+        cls+=" hidden flag"+border; txt="⚑";
+      } else {
+        cls+=" hidden"+border;
+        if(reachable(x,y)) cls+=" reach";
+      }
+      html+=`<div class="${cls}" data-x="${x}" data-y="${y}">${txt}</div>`;
+    }
+  }
+  board.innerHTML=html;
+  updateHud();
+  scheduleSave();
+}
+const hudClear=document.getElementById("h-clear");
+const hudDeath=document.getElementById("h-death");
+const hudFlag=document.getElementById("h-flag");
+function updateHud(){
+  hudClear.textContent=clearedTotal;
+  hudDeath.textContent=deaths;
+  hudFlag.textContent=flags;
+}
+
+// ---- input ----
+let down=false, dragged=false, sx=0, sy=0, downEl=null;
+board.addEventListener("pointerdown",e=>{
+  if(e.button!==0) return;
+  down=true; dragged=false; sx=e.clientX; sy=e.clientY;
+  downEl=e.target.closest(".cell");
+  try{ board.setPointerCapture(e.pointerId); }catch(_){}
+});
+board.addEventListener("pointermove",e=>{
+  if(!down) return;
+  const dx=e.clientX-sx, dy=e.clientY-sy;
+  if(!dragged && Math.hypot(dx,dy)>6){ dragged=true; board.classList.add("drag"); }
+  if(dragged){
+    const stepX = Math.round((e.clientX - sx)/CELL);
+    const stepY = Math.round((e.clientY - sy)/CELL);
+    if(stepX || stepY){
+      camX -= stepX; camY -= stepY;
+      sx += stepX*CELL; sy += stepY*CELL;
+      render();
+    }
+  }
+});
+board.addEventListener("pointerup",e=>{
+  if(e.button!==0){ down=false; return; }
+  down=false; board.classList.remove("drag");
+  if(dragged || !downEl) return;
+  userReveal(+downEl.dataset.x, +downEl.dataset.y);
+});
+board.addEventListener("contextmenu",e=>{
+  e.preventDefault();
+  const el=e.target.closest(".cell"); if(!el) return;
+  toggleFlag(+el.dataset.x, +el.dataset.y);
+});
+window.addEventListener("keydown",e=>{
+  const k=e.key.toLowerCase(); let moved=true;
+  if(k==="arrowup"||k==="w") camY--;
+  else if(k==="arrowdown"||k==="s") camY++;
+  else if(k==="arrowleft"||k==="a") camX--;
+  else if(k==="arrowright"||k==="d") camX++;
+  else moved=false;
+  if(moved){ e.preventDefault(); render(); }
+});
+window.addEventListener("resize",()=>{ fitViewport(); render(); });
+
+// ---- start ----
+fitViewport();
+if(!load()){
+  reseed(0,0);
+  camX = 4 - ((COLS/2)|0);
+  camY = 4 - ((ROWS/2)|0);
+}
+render();
+})();
+</script>
+</body>
+</html>

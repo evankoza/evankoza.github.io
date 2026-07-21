@@ -438,6 +438,34 @@ def src_chess(size=1000):
     return king.resize((size, size), Image.LANCZOS)
 
 
+# ---------------------------------------------------------------- minesweeper
+# The classic minesweeper mine: a solid orb with fat radiating spikes and a
+# little square shine. All solid masses (orb + thick spikes) so nothing thins
+# out in the coarse block grid — the most iconic read for the infinite-sweeper.
+def src_minesweeper(size=1000):
+    W = H = size * SS
+    img = Image.new("L", (W, H), 255)
+    d = ImageDraw.Draw(img)
+    cx, cy = W / 2, H / 2
+    r = W * 0.24                       # orb radius
+    spike_len = W * 0.40               # tip distance from centre
+    spike_w = max(6, int(W * 0.060))   # fat spikes survive the downsample
+    cap = W * 0.045                     # square nub at each spike tip (blocky classic look)
+    for k in range(8):
+        ang = k * math.pi / 4
+        tx, ty = cx + math.cos(ang) * spike_len, cy + math.sin(ang) * spike_len
+        d.line([(cx, cy), (tx, ty)], fill=0, width=spike_w)
+        d.rectangle([tx - cap, ty - cap, tx + cap, ty + cap], fill=0)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=0)
+    # classic upper-left shine: a white notch punched into the orb (reads as a
+    # pumpkin speck inside the knocked-out mine)
+    s = r * 0.34
+    sx, sy = cx - r * 0.42, cy - r * 0.42
+    d.rectangle([sx, sy, sx + s, sy + s], fill=255)
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0024))
+    return img.resize((size, size), Image.LANCZOS)
+
+
 if __name__ == "__main__":
     C = r"C:\website\assets\covers"
     S = r"C:\website\tools\covers-src"   # clean pumpkin-on-parchment originals
@@ -447,6 +475,7 @@ if __name__ == "__main__":
     asciify(src_data(),    C + r"\data-analysis.webp")   # new bar chart (kept)
     asciify(src_chess(),   C + r"\chessbot.webp")         # ESP32 ChessBot king
     asciify(src_printer(), C + r"\printer.webp")          # thermal receipt printer
+    asciify(src_minesweeper(), C + r"\minesweeper.webp")  # infinite minesweeper mine
     asciify(src_eye(),     C + r"\eye.webp", cut=205)     # vision1 eye easter egg (1/100 wall tile)
     asciify(src_eye_closed(), C + r"\eye-closed.webp", cut=205)  # favicon blink (tab blur)
     # lissajous / discord / make-your-own: re-screen the original letter-ASCII art
