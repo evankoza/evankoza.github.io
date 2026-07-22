@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Sudoku — Evan Koza</title>
+<meta name="description" content="Three fresh sudoku puzzles every day on a wooden table. No timer, no hints, no checking — just you, a pencil, and the puzzles. A compile-style toy by Evan Koza." />
+<link rel="canonical" href="https://evankoza.com/experiments/sudoku.html" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Evan Koza" />
+<meta property="og:title" content="Daily Sudoku — Evan Koza" />
+<meta property="og:description" content="Three fresh sudoku puzzles every day on a wooden table. No timer, no hints, no checking — just you, a pencil, and the puzzles." />
+<meta property="og:url" content="https://evankoza.com/experiments/sudoku.html" />
+<meta property="og:image" content="https://evankoza.com/assets/thumbnail.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<style>
+  :root{
+    /* warm paper palette — matches the homepage / minesweeper light pages */
+    --bg:#E4E0D6; --panel:#F4F2EB; --paper:#F6F3EC; --paper-cell:#FCFBF6;
+    --txt:#1c1b18; --grid-strong:#1c1b18; --grid-soft:rgba(28,27,24,.22);
+    --given:#1c1b18; --graphite:#3b3a36;
+    --accent:#C95000; --accent-bright:#F2622E;
+    --ink-muted:rgba(28,27,24,.58); --ink-faint:rgba(28,27,24,.40); --paper-line:rgba(28,27,24,.14);
+    --mono:ui-monospace,Menlo,Consolas,"SFMono-Regular","Liberation Mono",monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--mono);
+    color: var(--txt);
+    /* warm, toned-down wooden tabletop (CC0 texture, warmed to the paper palette) */
+    background:
+      radial-gradient(ellipse at 50% 42%, rgba(255,247,232,0.22), transparent 62%),
+      url("../assets/table.jpg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: #b79256;
+    user-select: none;
+    cursor: default;
+  }
+  #stage { position: absolute; inset: 0; }
+
+  /* edge vignette: the table settles into the frame (light scheme) */
+  #stage::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(125% 125% at 50% 42%, transparent 52%, rgba(28,27,24,.34) 100%);
+  }
+
+  /* the sheet of puzzles, centered on the desk */
+  #stack {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* faux pages peeking out underneath, to sell the "stack of three" */
+  .underpage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 460px;
+    height: 598px;
+    background: #f5f1e6;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 3px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+    transform: translate(-50%, -50%);
+  }
+
+  .page {
+    position: relative;
+    width: 460px;
+    height: 598px;
+    background: #fdfaf2;
+    border-radius: 3px;
+    box-shadow: 0 14px 36px rgba(0,0,0,0.45);
+    transition: transform 0.18s ease-out;
+    touch-action: none;   /* let us handle pen/touch drawing ourselves */
+  }
+  .page canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 3px;
+  }
+  .page .sheet { z-index: 1; }   /* printed puzzle */
+  .page .ink   { z-index: 2; }   /* your pencil marks */
+
+  /* dog-eared "next page" corner cue, bottom-right */
+  #corner {
+    position: absolute;
+    bottom: 0; right: 0;
+    width: 70px; height: 70px;
+    z-index: 3;
+    cursor: pointer;
+    background: linear-gradient(135deg, transparent 50%, #e7dec9 50%);
+    border-bottom-right-radius: 3px;
+    box-shadow: -2px -2px 6px rgba(0,0,0,0.12) inset;
+    transition: filter 0.15s;
+  }
+  #corner:hover { filter: brightness(1.08); }
+  #corner::after {
+    content: "▶";
+    position: absolute; bottom: 8px; right: 8px;
+    font-size: 13px; color: #8a7c5c;
+  }
+
+  /* dog-eared "previous page" corner cue, bottom-left */
+  #corner-back {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 70px; height: 70px;
+    z-index: 3;
+    cursor: pointer;
+    background: linear-gradient(225deg, transparent 50%, #e7dec9 50%);
+    border-bottom-left-radius: 3px;
+    box-shadow: 2px -2px 6px rgba(0,0,0,0.12) inset;
+    transition: filter 0.15s;
+  }
+  #corner-back:hover { filter: brightness(1.08); }
+  #corner-back::after {
+    content: "◀";
+    position: absolute; bottom: 8px; left: 8px;
+    font-size: 13px; color: #8a7c5c;
+  }
+
+  /* magnifying glass (hold Space) */
+  #loupe {
+    position: fixed;
+    width: 240px; height: 240px;
+    border-radius: 50%;
+    pointer-events: none;
+    display: none;
+    z-index: 50;
+    transform: translate(-50%, -50%);
+    border: 10px solid #d9d2c2;
+    box-shadow:
+      0 0 0 3px #b8b0a0,
+      0 10px 30px rgba(0,0,0,0.5),
+      inset 0 0 40px rgba(255,255,255,0.25);
+    overflow: hidden;
+  }
+  #loupe-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: none; z-index: 1;
+  }
+  #loupe::before {
+    content: "";
+    position: absolute;
+    top: 14%; left: 18%;
+    width: 40%; height: 22%;
+    background: radial-gradient(ellipse, rgba(255,255,255,0.45), transparent 70%);
+    border-radius: 50%;
+    transform: rotate(-25deg);
+    pointer-events: none; z-index: 2;
+  }
+
+  /* compile-style chrome: minimal floating escape hatch (light) */
+  .compile-chrome {
+    position: fixed;
+    top: 14px; left: 16px;
+    z-index: 60;
+    display: flex; align-items: center; gap: 12px;
+    font-family: var(--mono); pointer-events: none;
+  }
+  .compile-chrome .eyebrow {
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--accent); text-shadow: 0 1px 2px rgba(255,250,240,0.5);
+  }
+  .compile-chrome .eyebrow .prompt { color: var(--ink-faint); }
+  .compile-chrome a.nav {
+    pointer-events: auto;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-muted); text-decoration: none;
+    border: 1px solid var(--paper-line);
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: var(--panel);
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  .compile-chrome a.nav:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* HUD: which puzzle you're on + the controls, in the site pill style */
+  .hud {
+    position: fixed;
+    top: 14px; right: 16px;
+    z-index: 60;
+    display: flex; align-items: center; gap: 14px;
+    font-family: var(--mono);
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-muted); border: 1px solid var(--paper-line);
+    border-radius: 999px; padding: 6px 14px; background: var(--panel);
+  }
+  .hud .stat { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .hud .ic { color: var(--ink-faint); font-size: 12px; }
+  .hud b { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hud .keys b { color: var(--txt); }
+  @media (max-width: 640px){ .hud .keys { display: none; } }
+</style>
+</head>
+<body oncontextmenu="return false">
+  <div class="compile-chrome">
+    <span class="eyebrow"><span class="prompt">~ $</span> ./sudoku</span>
+    <a class="nav" href="https://evankoza.com/#return">&larr; Portfolio</a>
+  </div>
+
+  <div class="hud">
+    <span class="stat"><span class="ic">&#9670;</span> puzzle <b id="h-idx">1</b>/3</span>
+    <span class="stat keys"><span class="ic">&#9998;</span> <b>left</b> draw &middot; <b>right</b> erase &middot; <b>space</b> zoom</span>
+  </div>
+
+  <div id="stage">
+    <div id="stack">
+      <div class="underpage" style="transform: translate(-50%,-50%) rotate(-2.2deg) translate(-6px,5px);"></div>
+      <div class="underpage" style="transform: translate(-50%,-50%) rotate(1.6deg) translate(7px,3px);"></div>
+      <div class="underpage" style="transform: translate(-50%,-50%) rotate(-0.6deg) translate(2px,8px);"></div>
+      <div class="page" id="page">
+        <canvas class="sheet" id="sheet"></canvas>
+        <canvas class="ink" id="ink"></canvas>
+        <div id="corner-back" title="Previous puzzle"></div>
+        <div id="corner" title="Next puzzle"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="loupe"><canvas id="loupe-canvas" width="240" height="240"></canvas></div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- Page geometry ----------------------------------------------------
+  const PAGE_W = 460, PAGE_H = 598;         // ~letter ratio to match the pages
+  const NUM_PAGES = 3;                       // three puzzles a day
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  const sheet = document.getElementById('sheet');
+  const ink   = document.getElementById('ink');
+  const sctx  = sheet.getContext('2d');
+  const ictx  = ink.getContext('2d');
+  const loupe = document.getElementById('loupe');
+  const loupeCanvas = document.getElementById('loupe-canvas');
+  const cornerEl = document.getElementById('corner');
+  const cornerBackEl = document.getElementById('corner-back');
+
+  [sheet, ink].forEach(c => { c.width = PAGE_W * DPR; c.height = PAGE_H * DPR; });
+  sctx.scale(DPR, DPR);
+  ictx.scale(DPR, DPR);
+
+  let current = 0;
+  let currentAngle = 0;
+  const inkLayers = [];                      // one offscreen ink canvas per puzzle
+  const sheets = [];                         // one printed-puzzle canvas per puzzle
+  const pageEl = document.getElementById('page');
+
+  // ---- Seeded RNG: same three puzzles all day, for everyone -------------
+  // mulberry32 seeded from YYYYMMDD so a given calendar day is deterministic.
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function todayKey() {
+    const d = new Date();
+    return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  }
+  const DAY = todayKey();
+  let rng = Math.random;                      // swapped to seeded during generation
+
+  // ---- Sudoku engine (seeded) ------------------------------------------
+  function emptyGrid() { return Array.from({ length: 9 }, () => Array(9).fill(0)); }
+  function shuffle(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  function canPlace(g, r, c, n) {
+    for (let i = 0; i < 9; i++) { if (g[r][i] === n || g[i][c] === n) return false; }
+    const br = r - r % 3, bc = c - c % 3;
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) if (g[br + i][bc + j] === n) return false;
+    return true;
+  }
+  function fillFull(g) {
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+      if (g[r][c] === 0) {
+        for (const n of shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9])) {
+          if (canPlace(g, r, c, n)) { g[r][c] = n; if (fillFull(g)) return true; g[r][c] = 0; }
+        }
+        return false;
+      }
+    }
+    return true;
+  }
+  // Count solutions up to `cap`, branching on the most-constrained empty cell
+  // first (minimum-remaining-values). Naive left-to-right scanning makes
+  // uniqueness checks on sparse grids explode; MRV keeps them fast.
+  function countSolutions(g, cap) {
+    let count = 0;
+    (function solve() {
+      let bestR = -1, bestC = -1, bestCands = null;
+      for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+        if (g[r][c] !== 0) continue;
+        const cands = [];
+        for (let n = 1; n <= 9; n++) if (canPlace(g, r, c, n)) cands.push(n);
+        if (cands.length === 0) return;                 // dead end, no solution here
+        if (bestCands === null || cands.length < bestCands.length) {
+          bestR = r; bestC = c; bestCands = cands;
+          if (cands.length === 1) break;                // can't do better than forced
+        }
+      }
+      if (bestR === -1) { count++; return; }            // no empty cells → a solution
+      for (const n of bestCands) {
+        g[bestR][bestC] = n;
+        solve();
+        g[bestR][bestC] = 0;
+        if (count >= cap) return;
+      }
+    })();
+    return count;
+  }
+  function generate(holes) {
+    const full = emptyGrid();
+    fillFull(full);
+    const puzzle = full.map(r => r.slice());
+    const cells = shuffle(Array.from({ length: 81 }, (_, i) => i));
+    let removed = 0;
+    for (const idx of cells) {
+      if (removed >= holes) break;
+      const r = Math.floor(idx / 9), c = idx % 9;
+      if (puzzle[r][c] === 0) continue;
+      const backup = puzzle[r][c];
+      puzzle[r][c] = 0;
+      const test = puzzle.map(x => x.slice());
+      if (countSolutions(test, 2) !== 1) puzzle[r][c] = backup;  // keep it uniquely solvable
+      else removed++;
+    }
+    return puzzle;
+  }
+
+  // ---- Draw a printed puzzle onto a sheet canvas -----------------------
+  const HOLES = [40, 48, 54];   // three puzzles: easy → medium → hard
+
+  const MONO = 'ui-monospace, Menlo, Consolas, "SFMono-Regular", monospace';
+  function renderPuzzleSheet(ctx, puzzle) {
+    // paper — warm off-white to match the site's --panel
+    ctx.fillStyle = '#F6F3EC';
+    ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+
+    // grid geometry — centered on the page, nothing else on it
+    const GRID = 396;
+    const ox = (PAGE_W - GRID) / 2;
+    const oy = (PAGE_H - GRID) / 2;
+    const cell = GRID / 9;
+
+    // cell backdrop — a touch brighter than the page so the grid reads
+    ctx.fillStyle = '#FCFBF6';
+    ctx.fillRect(ox, oy, GRID, GRID);
+
+    // grid lines
+    for (let i = 0; i <= 9; i++) {
+      const thick = (i % 3 === 0);
+      ctx.strokeStyle = thick ? '#1c1b18' : 'rgba(28,27,24,0.24)';
+      ctx.lineWidth = thick ? 2.4 : 1;
+      ctx.beginPath();
+      ctx.moveTo(ox + i * cell, oy);
+      ctx.lineTo(ox + i * cell, oy + GRID);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(ox, oy + i * cell);
+      ctx.lineTo(ox + GRID, oy + i * cell);
+      ctx.stroke();
+    }
+
+    // givens — mono, matching the site type
+    ctx.fillStyle = '#1c1b18';
+    ctx.font = '700 ' + Math.round(cell * 0.56) + 'px ' + MONO;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+      const v = puzzle[r][c];
+      if (v) ctx.fillText(String(v), ox + c * cell + cell / 2, oy + r * cell + cell / 2 + 1);
+    }
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  const hudIdx = document.getElementById('h-idx');
+  function renderPage() {
+    sctx.clearRect(0, 0, PAGE_W, PAGE_H);
+    sctx.drawImage(sheets[current], 0, 0, PAGE_W, PAGE_H);
+    ictx.clearRect(0, 0, PAGE_W, PAGE_H);
+    ictx.drawImage(inkLayers[current], 0, 0, PAGE_W, PAGE_H);
+    pageEl.style.transform = 'rotate(' + currentAngle + 'deg)';
+    hudIdx.textContent = current + 1;
+  }
+
+  // ---- Ink persistence: keep pencil marks through a refresh (per day) ---
+  const INK_KEY = 'daily-sudoku-ink-' + DAY;
+  function saveInk() {
+    try {
+      const data = inkLayers.map(l => l.toDataURL('image/png'));
+      localStorage.setItem(INK_KEY, JSON.stringify(data));
+    } catch (e) { /* storage full or blocked — marks just won't persist */ }
+  }
+  function loadInk() {
+    try {
+      const raw = localStorage.getItem(INK_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      data.forEach((url, i) => {
+        if (!url || i >= inkLayers.length) return;
+        const img = new Image();
+        img.onload = () => {
+          inkLayers[i].getContext('2d').drawImage(img, 0, 0, PAGE_W * DPR, PAGE_H * DPR);
+          if (i === current) renderPage();
+        };
+        img.src = url;
+      });
+    } catch (e) { /* ignore */ }
+    // drop any prior day's saved ink so storage doesn't grow unbounded
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('daily-sudoku-ink-') && k !== INK_KEY) {
+        localStorage.removeItem(k); i--;
+      }
+    }
+  }
+
+  // ---- Drawing (pointer: mouse / pen / touch) --------------------------
+  // left button = pencil, right button = eraser
+  let mode = 'pencil';
+  let drawing = false, last = null, activePointer = null;
+  let lastClientX = window.innerWidth / 2, lastClientY = window.innerHeight / 2;
+
+  function pagePos(e) {
+    const r = ink.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const dx = e.clientX - cx, dy = e.clientY - cy;
+    const a = -currentAngle * Math.PI / 180;
+    const rx = dx * Math.cos(a) - dy * Math.sin(a);
+    const ry = dx * Math.sin(a) + dy * Math.cos(a);
+    return { x: rx + PAGE_W / 2, y: ry + PAGE_H / 2 };
+  }
+  function applyBrush() {
+    if (mode === 'eraser') {
+      ictx.globalCompositeOperation = 'destination-out';
+      ictx.lineWidth = 16;
+      ictx.strokeStyle = 'rgba(0,0,0,1)';
+    } else {
+      ictx.globalCompositeOperation = 'source-over';
+      ictx.lineWidth = 2.2;
+      ictx.strokeStyle = '#3a3a3a';           // graphite
+    }
+    ictx.lineCap = 'round';
+    ictx.lineJoin = 'round';
+  }
+  function strokeTo(p) {
+    ictx.beginPath();
+    ictx.moveTo(last.x, last.y);
+    ictx.lineTo(p.x, p.y);
+    ictx.stroke();
+    last = p;
+  }
+  function persistCurrentInk() {
+    const lctx = inkLayers[current].getContext('2d');
+    lctx.clearRect(0, 0, PAGE_W * DPR, PAGE_H * DPR);
+    lctx.drawImage(ink, 0, 0);
+  }
+
+  ink.addEventListener('pointerdown', (e) => {
+    if (drawing) return;
+    if (e.button === 0) mode = 'pencil';
+    else if (e.button === 2) mode = 'eraser';
+    else return;                              // ignore middle/other buttons
+    drawing = true; activePointer = e.pointerId;
+    ink.setPointerCapture(e.pointerId);
+    applyBrush();
+    last = pagePos(e);
+    if (mode === 'pencil') {                   // a dot for a single tap
+      ictx.fillStyle = '#3a3a3a';
+      ictx.beginPath();
+      ictx.arc(last.x, last.y, 1.1, 0, Math.PI * 2);
+      ictx.fill();
+    } else {
+      strokeTo(last);
+    }
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', (e) => {
+    lastClientX = e.clientX; lastClientY = e.clientY;
+    if (drawing && e.pointerId === activePointer) {
+      applyBrush();
+      strokeTo(pagePos(e));
+      if (magnifying) { loupeSrc = loupeSourceCanvas(); updateLoupe(e); }
+    } else if (magnifying) {
+      updateLoupe(e);
+    }
+  });
+  function endStroke(e) {
+    if (drawing && e.pointerId === activePointer) {
+      drawing = false; activePointer = null;
+      ictx.globalCompositeOperation = 'source-over';
+      persistCurrentInk();
+      saveInk();
+    }
+  }
+  window.addEventListener('pointerup', endStroke);
+  window.addEventListener('pointercancel', endStroke);
+
+  // ---- Magnifier (hold Space) ------------------------------------------
+  let magnifying = false;
+  const ZOOM = 2.4, LOUPE_R = 120;
+  const _lctx = loupeCanvas.getContext('2d');
+  let loupeSrc = null;
+
+  function loupeSourceCanvas() {
+    const src = sheets[current];
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    const x = c.getContext('2d');
+    x.drawImage(src, 0, 0);
+    x.drawImage(ink, 0, 0, src.width, src.height);
+    return c;
+  }
+  function drawLoupeSlice(px, py) {
+    const f = loupeSrc.width / PAGE_W;
+    const srcSize = (LOUPE_R * 2) / ZOOM;
+    const sx = (px - srcSize / 2) * f, sy = (py - srcSize / 2) * f;
+    _lctx.clearRect(0, 0, 240, 240);
+    _lctx.imageSmoothingEnabled = true;
+    _lctx.drawImage(loupeSrc, sx, sy, srcSize * f, srcSize * f, 0, 0, 240, 240);
+  }
+  function updateLoupe(e) {
+    loupe.style.left = e.clientX + 'px';
+    loupe.style.top  = e.clientY + 'px';
+    const p = pagePos(e), px = p.x, py = p.y;
+    const overPaper = px >= 0 && px <= PAGE_W && py >= 0 && py <= PAGE_H;
+    if (overPaper && loupeSrc) {
+      drawLoupeSlice(px, py);
+      loupeCanvas.style.display = 'block';
+      loupe.style.backgroundColor = '#F6F3EC';
+    } else {
+      loupeCanvas.style.display = 'none';
+      loupe.style.backgroundColor = 'rgba(245,241,230,0.55)';
+    }
+  }
+  function startZoom() {
+    if (magnifying) return;
+    magnifying = true;
+    loupeSrc = loupeSourceCanvas();
+    loupe.style.display = 'block';
+    updateLoupe({ clientX: lastClientX, clientY: lastClientY });
+  }
+  function stopZoom() {
+    magnifying = false;
+    loupe.style.display = 'none';
+  }
+
+  // ---- Flipping through the stack --------------------------------------
+  function turnPage(dir) {
+    persistCurrentInk();
+    current = (current + dir + NUM_PAGES) % NUM_PAGES;
+    currentAngle = (rngFlip() < 0.5 ? -1 : 1) * (1.2 + rngFlip() * 2.2);
+    renderPage();
+  }
+  // flip tilt uses plain Math.random so it feels alive, not deterministic
+  function rngFlip() { return Math.random(); }
+  cornerEl.addEventListener('click', (e) => { e.stopPropagation(); turnPage(1); });
+  cornerBackEl.addEventListener('click', (e) => { e.stopPropagation(); turnPage(-1); });
+  cornerEl.addEventListener('pointerdown', (e) => e.stopPropagation());
+  cornerBackEl.addEventListener('pointerdown', (e) => e.stopPropagation());
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); startZoom(); }
+    else if (e.key === 'ArrowRight') turnPage(1);
+    else if (e.key === 'ArrowLeft') turnPage(-1);
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); stopZoom(); }
+  });
+  // dropping the glass if focus is lost while Space is held
+  window.addEventListener('blur', stopZoom);
+
+  // ---- Boot: generate today's three puzzles ----------------------------
+  function build() {
+    rng = mulberry32(DAY);                     // deterministic for the day
+    for (let i = 0; i < NUM_PAGES; i++) {
+      const puzzle = generate(HOLES[i]);
+      const sc = document.createElement('canvas');
+      sc.width = PAGE_W * DPR; sc.height = PAGE_H * DPR;
+      const sx = sc.getContext('2d');
+      sx.scale(DPR, DPR);
+      renderPuzzleSheet(sx, puzzle);
+      sheets.push(sc);
+
+      const layer = document.createElement('canvas');
+      layer.width = PAGE_W * DPR; layer.height = PAGE_H * DPR;
+      inkLayers.push(layer);
+    }
+    loadInk();
+    renderPage();
+  }
+
+  // let the loading message paint before the (synchronous) generation runs.
+  // plain setTimeout (not requestAnimationFrame) so it still fires when the
+  // tab isn't the visible one — rAF is paused for backgrounded tabs.
+  setTimeout(build, 30);
+})();
+</script>
+</body>
+</html>

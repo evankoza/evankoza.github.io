@@ -466,6 +466,44 @@ def src_minesweeper(size=1000):
     return img.resize((size, size), Image.LANCZOS)
 
 
+# ---------------------------------------------------------------- daily sudoku
+# A sparse sudoku grid: bold 3×3 box rules + a scatter of solid clue cells. Thin
+# inner lines mostly wash out in the coarse block grid, but the thick box frame
+# and the filled givens survive as solid masses — reading clearly as a sudoku.
+def src_sudoku(size=1000):
+    W = H = size * SS
+    img = Image.new("L", (W, H), 255)
+    d = ImageDraw.Draw(img)
+    m = W * 0.10                       # margin
+    g = W - 2 * m                      # grid extent
+    cell = g / 9
+
+    # solid clue cells (a symmetric ~17-given scatter), inset so they read as
+    # filled squares inside their cells rather than a merged blob
+    clues = {(0,0),(0,4),(1,2),(1,7),(2,5),(3,1),(3,8),(4,3),(4,4),(4,5),
+             (5,0),(5,7),(6,3),(7,1),(7,6),(8,4),(8,8)}
+    inset = cell * 0.17
+    for (r, c) in clues:
+        d.rectangle([m + c*cell + inset, m + r*cell + inset,
+                     m + (c+1)*cell - inset, m + (r+1)*cell - inset], fill=0)
+
+    # thin inner lines
+    thin = max(3, int(W * 0.009))
+    for i in range(10):
+        x = m + i * cell
+        d.line([(x, m), (x, m + g)], fill=0, width=thin)
+        d.line([(m, x), (m + g, x)], fill=0, width=thin)
+    # thick box + frame rules every 3 cells (these carry the sudoku read)
+    thick = max(8, int(W * 0.030))
+    for i in range(0, 10, 3):
+        x = m + i * cell
+        d.line([(x, m - thick*0.4), (x, m + g + thick*0.4)], fill=0, width=thick)
+        d.line([(m - thick*0.4, x), (m + g + thick*0.4, x)], fill=0, width=thick)
+
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0022))
+    return img.resize((size, size), Image.LANCZOS)
+
+
 if __name__ == "__main__":
     C = r"C:\website\assets\covers"
     S = r"C:\website\tools\covers-src"   # clean pumpkin-on-parchment originals
@@ -476,6 +514,7 @@ if __name__ == "__main__":
     asciify(src_chess(),   C + r"\chessbot.webp")         # ESP32 ChessBot king
     asciify(src_printer(), C + r"\printer.webp")          # thermal receipt printer
     asciify(src_minesweeper(), C + r"\minesweeper.webp")  # infinite minesweeper mine
+    asciify(src_sudoku(), C + r"\sudoku.webp")            # daily sudoku grid
     asciify(src_eye(),     C + r"\eye.webp", cut=205)     # vision1 eye easter egg (1/100 wall tile)
     asciify(src_eye_closed(), C + r"\eye-closed.webp", cut=205)  # favicon blink (tab blur)
     # lissajous / discord / make-your-own: re-screen the original letter-ASCII art
