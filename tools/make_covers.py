@@ -467,40 +467,44 @@ def src_minesweeper(size=1000):
 
 
 # ---------------------------------------------------------------- daily sudoku
-# A sparse sudoku grid: bold 3×3 box rules + a scatter of solid clue cells. Thin
-# inner lines mostly wash out in the coarse block grid, but the thick box frame
-# and the filled givens survive as solid masses — reading clearly as a sudoku.
+# A zoomed-in 3×3 corner of the canonical sudoku: big Arial-Black givens + thick
+# box rules that bleed off every edge (implying the rest of the board). Numbers
+# are what read as "sudoku" at thumbnail size — a bare grid just looks like a
+# window, so this leans on a few large, legible digits instead of fine detail.
 def src_sudoku(size=1000):
     W = H = size * SS
     img = Image.new("L", (W, H), 255)
     d = ImageDraw.Draw(img)
-    m = W * 0.10                       # margin
-    g = W - 2 * m                      # grid extent
-    cell = g / 9
+    n = 3
+    m = W * 0.06
+    g = W - 2 * m
+    cell = g / n
 
-    # solid clue cells (a symmetric ~17-given scatter), inset so they read as
-    # filled squares inside their cells rather than a merged blob
-    clues = {(0,0),(0,4),(1,2),(1,7),(2,5),(3,1),(3,8),(4,3),(4,4),(4,5),
-             (5,0),(5,7),(6,3),(7,1),(7,6),(8,4),(8,8)}
-    inset = cell * 0.17
-    for (r, c) in clues:
-        d.rectangle([m + c*cell + inset, m + r*cell + inset,
-                     m + (c+1)*cell - inset, m + (r+1)*cell - inset], fill=0)
+    # the actual top-left box of the classic puzzle (blanks are the ones to solve)
+    nums = [[5, 3, None],
+            [6, None, None],
+            [None, 9, 8]]
+    font = ImageFont.truetype(r"C:\Windows\Fonts\ariblk.ttf", int(cell * 0.74))
+    for r in range(n):
+        for c in range(n):
+            v = nums[r][c]
+            if v is None:
+                continue
+            s = str(v)
+            bb = d.textbbox((0, 0), s, font=font)
+            tw, th = bb[2] - bb[0], bb[3] - bb[1]
+            cx, cy = m + c*cell + cell/2, m + r*cell + cell/2
+            d.text((cx - tw/2 - bb[0], cy - th/2 - bb[1]), s, font=font, fill=0)
 
-    # thin inner lines
-    thin = max(3, int(W * 0.009))
-    for i in range(10):
+    # thick box rules, extended past the margins so the board reads as a fragment
+    thick = max(10, int(W * 0.028))
+    ext = W * 0.06
+    for i in range(n + 1):
         x = m + i * cell
-        d.line([(x, m), (x, m + g)], fill=0, width=thin)
-        d.line([(m, x), (m + g, x)], fill=0, width=thin)
-    # thick box + frame rules every 3 cells (these carry the sudoku read)
-    thick = max(8, int(W * 0.030))
-    for i in range(0, 10, 3):
-        x = m + i * cell
-        d.line([(x, m - thick*0.4), (x, m + g + thick*0.4)], fill=0, width=thick)
-        d.line([(m - thick*0.4, x), (m + g + thick*0.4, x)], fill=0, width=thick)
+        d.line([(x, m - ext), (x, m + g + ext)], fill=0, width=thick)
+        d.line([(m - ext, x), (m + g + ext, x)], fill=0, width=thick)
 
-    img = img.filter(ImageFilter.GaussianBlur(W * 0.0022))
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0020))
     return img.resize((size, size), Image.LANCZOS)
 
 
