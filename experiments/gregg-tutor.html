@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gregg Shorthand Tutor — Evan Koza</title>
+<meta name="description" content="Learn Gregg shorthand with your mouse: Pointer Lock turns raw motion into ink, and each stroke is recognized by shape and length. Freeform, drill, and a timed challenge. A compile-style toy by Evan Koza." />
+<link rel="canonical" href="https://evankoza.com/experiments/gregg-tutor.html" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Evan Koza" />
+<meta property="og:title" content="Gregg Shorthand Tutor — Evan Koza" />
+<meta property="og:description" content="Learn Gregg shorthand with your mouse — the motion is the letter. Freeform, drill, and a MonkeyType-style timed challenge." />
+<meta property="og:url" content="https://evankoza.com/experiments/gregg-tutor.html" />
+<meta property="og:image" content="https://evankoza.com/assets/thumbnail.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<style>
+  :root{
+    /* warm paper palette — matches the homepage / minesweeper / sudoku light pages */
+    --bg:#E4E0D6; --panel:#F4F2EB; --sub-alt:#DCD6C8;
+    --text:#1c1b18; --sub:rgba(28,27,24,.55);
+    --accent:#C95000; --accent-bright:#F2622E;
+    --error:#B02A15; --error-dark:#F0CFC5;
+    --line-soft:rgba(28,27,24,.10); --paper-line:rgba(28,27,24,.14);
+    --mono:ui-monospace,Menlo,Consolas,"SFMono-Regular","Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font:16px/1.5 var(--mono);
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+  }
+  body.letters{overflow-y:auto}
+  button{font:inherit;color:var(--sub);background:none;border:0;cursor:pointer;padding:4px 8px;transition:color .12s}
+  button:hover{color:var(--text)}
+  button.on{color:var(--accent)}
+
+  /* ---------- top bar ---------- */
+  header{
+    position:relative;z-index:20;display:flex;align-items:center;gap:28px;
+    max-width:1100px;margin:0 auto;padding:26px 32px 0;flex-wrap:wrap;
+  }
+  .logo{font-size:24px;color:var(--text);letter-spacing:-1px;user-select:none}
+  .logo b{color:var(--accent);font-weight:400}
+  nav{display:flex;gap:2px}
+  .cfg{display:flex;gap:2px;align-items:center;margin-left:auto;font-size:12px}
+  .cfg .sep{width:1px;height:16px;background:var(--sub-alt);margin:0 10px}
+  .cfg button{padding:4px 7px;font-size:12px}
+
+  /* ---------- words test ---------- */
+  #test{position:fixed;inset:0;display:flex;align-items:center;overflow:hidden}
+  #live{
+    position:fixed;top:96px;left:50%;transform:translateX(-50%);
+    color:var(--accent);font-size:15px;opacity:0;transition:opacity .2s;z-index:5;
+  }
+  #live.show{opacity:1}
+  #tape{
+    position:absolute;left:0;display:flex;gap:56px;align-items:flex-start;
+    width:max-content;transition:transform .28s ease;will-change:transform;z-index:2;
+  }
+  .word .en{font-size:44px;color:var(--sub);transition:color .15s;text-align:center}
+  .word.cur .en{color:var(--text)}
+  .word.done .en{color:var(--text);opacity:.85}
+  .word.done.err .en{color:var(--error)}
+  .slots{display:flex;gap:10px;justify-content:center;margin-top:14px;min-height:40px}
+  .slot{width:40px;height:40px;display:flex;align-items:center;justify-content:center}
+  .slot .dot{width:8px;height:8px;border-radius:50%;background:var(--sub-alt)}
+  .slot.cur .dot{background:var(--accent);animation:blink 1s ease infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+  .slot svg{width:40px;height:40px}
+  .slot svg .tpl{fill:none;stroke:var(--sub);stroke-width:4.5;opacity:.3;stroke-linecap:round;stroke-linejoin:round}
+  .slot svg .usr{fill:none;stroke:var(--text);stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round}
+  .slot.err svg .usr{stroke:var(--error)}
+  #ink{position:fixed;inset:0;width:100vw;height:100vh;z-index:3}
+  body.letters #ink{position:static;width:100%;height:420px;border-radius:10px;background:var(--sub-alt);cursor:crosshair}
+
+  /* ---------- alphabet reference (words mode) ---------- */
+  #dict{
+    position:fixed;left:0;right:0;bottom:70px;z-index:4;display:none;
+    flex-wrap:wrap;gap:2px 10px;justify-content:center;
+    max-width:980px;margin:0 auto;padding:0 32px;pointer-events:none;
+    transition:opacity .3s;
+  }
+  #dict.show{display:flex}
+  #dict.dim{opacity:.45}
+  #dict .d{text-align:center}
+  #dict .d svg{width:36px;height:28px;display:block;margin:0 auto}
+  #dict .d svg path,#dict .d svg circle{fill:none;stroke:var(--sub);stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+  #dict .d .lab{font-size:10px;color:var(--sub);margin-top:-2px}
+  body.letters #dict{display:none}
+
+  /* ---------- footer hints ---------- */
+  footer{
+    position:fixed;left:0;right:0;bottom:26px;z-index:20;
+    display:flex;gap:26px;justify-content:center;color:var(--sub);font-size:12px;
+    pointer-events:none;transition:opacity .3s;
+  }
+  footer.dim{opacity:0}
+  key{background:var(--sub-alt);color:var(--text);border-radius:4px;padding:1px 7px;font-size:11px;margin-right:6px}
+
+  /* ---------- results ---------- */
+  #results{
+    position:fixed;inset:0;z-index:15;display:none;overflow-y:auto;background:var(--bg);
+  }
+  #results.show{display:block}
+  .resWrap{max-width:900px;margin:0 auto;padding:110px 32px 80px;display:flex;flex-direction:column;align-items:center}
+  .bigStats{display:flex;gap:64px;align-items:flex-end}
+  .stat .lab{color:var(--sub);font-size:15px}
+  .stat .val{color:var(--accent);font-size:64px;line-height:1.05}
+  .stat.sm .val{font-size:32px;color:var(--text)}
+  .resGrid{display:flex;flex-wrap:wrap;gap:18px 26px;justify-content:center;margin-top:56px}
+  .rw{text-align:center}
+  .rw .rwen{font-size:14px;color:var(--sub);margin-bottom:4px}
+  .rw.err .rwen{color:var(--error)}
+  .rw .strokes{display:flex;gap:6px}
+  .rw svg{width:44px;height:38px}
+  .rw svg .tpl{fill:none;stroke:var(--sub);stroke-width:4.5;opacity:.35;stroke-linecap:round;stroke-linejoin:round}
+  .rw svg .usr{fill:none;stroke:var(--text);stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round}
+  .rw .er svg .usr{stroke:var(--error)}
+  #again{margin-top:52px;font-size:20px;color:var(--sub);padding:10px 22px}
+  #again:hover{color:var(--text)}
+
+  /* ---------- letters mode ---------- */
+  #lettersView{display:none;max-width:820px;margin:0 auto;padding:40px 32px 80px;position:relative;z-index:10}
+  body.letters #lettersView{display:block}
+  body.letters #test,body.letters footer{display:none}
+  .padBox{position:relative}
+  #padSlot{margin-top:8px}
+  .padCue{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--sub);pointer-events:none;font-size:14px;text-align:center}
+  #freeRes{min-height:120px;display:flex;gap:34px;align-items:center;justify-content:center;padding:26px 0 6px}
+  #freeRes .big{font-size:56px;color:var(--accent)}
+  #freeRes .gsvg svg{width:120px;height:96px}
+  #freeRes .gsvg path,#freeRes .gsvg circle{fill:none;stroke:var(--text);stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+  #freeRes .meta{color:var(--sub);font-size:13px}
+  #freeRes .meta b{color:var(--text);font-weight:400}
+  #freeRes .alts{display:flex;gap:14px;margin-top:8px;align-items:flex-end}
+  #freeRes .alts svg{width:30px;height:24px}
+  #freeRes .alts svg path,#freeRes .alts svg circle{fill:none;stroke:var(--sub);stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+  #freeRes .alts .a{text-align:center;font-size:11px;color:var(--sub)}
+  .chart{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;margin-top:34px}
+  .cell{background:var(--sub-alt);border-radius:8px;padding:8px 6px;text-align:center}
+  .cell svg{width:52px;height:40px;display:block;margin:0 auto}
+  .cell svg path,.cell svg circle{fill:none;stroke:var(--text);stroke-width:6;stroke-linecap:round;stroke-linejoin:round}
+  .cell .lab{font-size:12px;margin-top:4px;color:var(--sub)}
+
+  /* ---------- compile-style Portfolio return link ---------- */
+  a.nav{
+    margin-left:14px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--sub);text-decoration:none;border:1px solid var(--paper-line);
+    border-radius:999px;padding:6px 12px;white-space:nowrap;
+    transition:color .15s,border-color .15s;
+  }
+  a.nav:hover{color:var(--accent);border-color:var(--accent)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">gregg<b>tutor</b></div>
+  <nav>
+    <button id="mWords" class="on">words</button>
+    <button id="mLetters">letters</button>
+  </nav>
+  <div class="cfg">
+    <button id="cfgHints" class="on">hints</button>
+    <button id="cfgDict">abc</button>
+    <span class="sep"></span>
+    <button data-len="10" class="lenBtn">10</button>
+    <button data-len="25" class="lenBtn on">25</button>
+    <button data-len="50" class="lenBtn">50</button>
+    <span class="sep"></span>
+    <button id="zoomOut">−</button>
+    <button id="zoomLabel" style="cursor:default">100%</button>
+    <button id="zoomIn">+</button>
+    <span class="sep"></span>
+    <a class="nav" href="https://evankoza.com/#return">&larr; Portfolio</a>
+  </div>
+</header>
+
+<div id="live"></div>
+<div id="dict"></div>
+<div id="test"><div id="tape"></div></div>
+<canvas id="ink"></canvas>
+
+<div id="results"><div class="resWrap">
+  <div class="bigStats">
+    <div class="stat"><div class="lab">wpm</div><div class="val" id="rWpm">0</div></div>
+    <div class="stat"><div class="lab">acc</div><div class="val" id="rAcc">0%</div></div>
+    <div class="stat sm"><div class="lab">time</div><div class="val" id="rTime">0s</div></div>
+    <div class="stat sm"><div class="lab">strokes</div><div class="val" id="rStrokes">0</div></div>
+  </div>
+  <div class="resGrid" id="resGrid"></div>
+  <button id="again">restart</button>
+</div></div>
+
+<div id="lettersView">
+  <div class="padBox" id="padSlot"><div class="padCue" id="padCue">click to write · pause to commit</div></div>
+  <div id="freeRes"><div class="meta">draw any letter</div></div>
+  <div class="chart" id="chart"></div>
+</div>
+
+<footer id="foot">
+  <span><key>click</key>start writing</span>
+  <span><key>tab</key>restart</span>
+  <span><key>esc</key>release</span>
+</footer>
+
+<script>
+/* ---------- geometry helpers (unit space: x→right, y→down; "up" = -y) ---------- */
+const D2R = Math.PI/180;
+function line(angleDeg, len){
+  const a=angleDeg*D2R, ex=Math.cos(a)*len, ey=-Math.sin(a)*len, out=[];
+  for(let i=0;i<=16;i++){const t=i/16; out.push([ex*t, ey*t]);}
+  return out;
+}
+function arc(chordAngleDeg, len, bulge){ // bulge>0 bows to the "up/left" of travel
+  const a=chordAngleDeg*D2R, dx=Math.cos(a), dy=-Math.sin(a);
+  const px=dy, py=-dx;
+  const out=[];
+  for(let i=0;i<=22;i++){
+    const t=i/22, bx=dx*len*t, by=dy*len*t, k=4*t*(1-t);
+    out.push([bx+px*bulge*len*k, by+py*bulge*len*k]);
+  }
+  return out;
+}
+function circle(r, gapDeg=40, cw=true){
+  const out=[], span=360-gapDeg, n=26;
+  for(let i=0;i<=n;i++){
+    const ang=(90 + (cw?-1:1)*(i/n)*span)*D2R;
+    out.push([r*Math.cos(ang), -r*Math.sin(ang)]);
+  }
+  return out;
+}
+
+/* ---------- Gregg Simplified alphabet (editable) ---------- */
+const GLYPHS = [
+  {k:'K',  en:'k',  cat:'c', len:1.3, pts:arc(0,  1.3,  0.42)},
+  {k:'G',  en:'g',  cat:'c', len:2.4, pts:arc(0,  2.4,  0.42)},
+  {k:'R',  en:'r',  cat:'c', len:1.3, pts:arc(0,  1.3, -0.42)},
+  {k:'L',  en:'l',  cat:'c', len:2.4, pts:arc(0,  2.4, -0.42)},
+  {k:'N',  en:'n',  cat:'c', len:1.3, pts:line(0, 1.3)},
+  {k:'M',  en:'m',  cat:'c', len:2.4, pts:line(0, 2.4)},
+  {k:'T',  en:'t',  cat:'c', len:1.3, pts:line(62,1.3)},
+  {k:'D',  en:'d',  cat:'c', len:2.4, pts:line(62,2.4)},
+  {k:'P',  en:'p',  cat:'c', len:1.4, pts:arc(-62,1.4,  0.42)},
+  {k:'B',  en:'b',  cat:'c', len:2.5, pts:arc(-62,2.5,  0.42)},
+  {k:'F',  en:'f',  cat:'c', len:1.4, pts:arc(-62,1.4, -0.42)},
+  {k:'V',  en:'v',  cat:'c', len:2.5, pts:arc(-62,2.5, -0.42)},
+  {k:'SH', en:'sh', cat:'c', len:1.2, pts:line(-62,1.2)},
+  {k:'CH', en:'ch', cat:'c', len:1.8, pts:line(-62,1.8)},
+  {k:'J',  en:'j',  cat:'c', len:2.5, pts:line(-62,2.5)},
+  {k:'S',  en:'s',  cat:'c', len:0.7, pts:arc(-62,0.7, 0.35)},
+  {k:'A',  en:'a',  cat:'v', len:1.9, pts:circle(0.95)},
+  {k:'E',  en:'e',  cat:'v', len:0.9, pts:circle(0.42)},
+  {k:'O',  en:'o',  cat:'v', len:1.0, pts:arc(-90,0.9,  0.55)},
+  {k:'OO', en:'oo', cat:'v', len:1.0, pts:arc(-90,0.9, -0.55)},
+];
+
+/* ---------- resample + normalize ---------- */
+function dist(a,b){return Math.hypot(a[0]-b[0],a[1]-b[1]);}
+function pathLen(p){let s=0;for(let i=1;i<p.length;i++)s+=dist(p[i-1],p[i]);return s;}
+function resample(points,n){
+  if(points.length<2) return null;
+  const I=pathLen(points)/(n-1); if(I===0) return null;
+  const out=[points[0].slice()]; let D=0, pts=points.map(p=>p.slice());
+  for(let i=1;i<pts.length;i++){
+    let d=dist(pts[i-1],pts[i]);
+    if(D+d>=I){
+      const t=(I-D)/d;
+      const q=[pts[i-1][0]+t*(pts[i][0]-pts[i-1][0]), pts[i-1][1]+t*(pts[i][1]-pts[i-1][1])];
+      out.push(q); pts.splice(i,0,q); D=0;
+    } else D+=d;
+  }
+  while(out.length<n) out.push(pts[pts.length-1].slice());
+  return out.slice(0,n);
+}
+function centroid(p){let x=0,y=0;for(const q of p){x+=q[0];y+=q[1];}return[x/p.length,y/p.length];}
+function rmsRadius(p){const c=centroid(p);let s=0;for(const q of p)s+=(q[0]-c[0])**2+(q[1]-c[1])**2;return Math.sqrt(s/p.length);}
+function normShape(p){
+  const c=centroid(p), r=rmsRadius(p)||1;
+  return p.map(q=>[(q[0]-c[0])/r,(q[1]-c[1])/r]);
+}
+function meanDist(a,b){let s=0;for(let i=0;i<a.length;i++)s+=dist(a[i],b[i]);return s/a.length;}
+function straightness(p){return dist(p[0],p[p.length-1])/(pathLen(p)||1);}
+
+const N=32;
+const REF = Math.max(...GLYPHS.map(g=>rmsRadius(resample(g.pts,N))));
+for(const g of GLYPHS){
+  const rs=resample(g.pts,N);
+  g._raw=rs;
+  g._norm=normShape(rs);
+  g._sizeFrac=rmsRadius(rs)/REF;
+  g._straight=straightness(rs);
+}
+
+/* ---------- recognition: forward-only shape match + ends + curvature + size ---------- */
+function scoreGlyph(insN, inFrac, inStr, g){
+  const shape=meanDist(insN,g._norm);
+  const ends=(dist(insN[0],g._norm[0])+dist(insN[N-1],g._norm[N-1]))/2;
+  const strPen=Math.abs(inStr-g._straight);
+  const sizePen=Math.abs(inFrac-g._sizeFrac);
+  return { shape, ends, total: shape + 0.6*ends + 1.6*strPen + 0.7*sizePen };
+}
+function recognize(input){
+  const rs=resample(input,N); if(!rs) return [];
+  const insN=normShape(rs), inFrac=rmsRadius(rs)/REF_PX(), inStr=straightness(rs);
+  return GLYPHS.map(g=>{
+    const s=scoreGlyph(insN, inFrac, inStr, g);
+    return {g, shape:s.shape, total:s.total, conf:Math.max(0,1-(s.shape+0.6*s.ends)/1.6)};
+  }).sort((a,b)=>a.total-b.total);
+}
+let pxPerUnit=42;
+function REF_PX(){return REF*pxPerUnit;}
+
+/* ---------- SVG rendering (one shared scale so length shows) ---------- */
+function bbox(pts){let a=1e9,b=1e9,c=-1e9,d=-1e9;for(const p of pts){a=Math.min(a,p[0]);b=Math.min(b,p[1]);c=Math.max(c,p[0]);d=Math.max(d,p[1]);}return{w:c-a,h:d-b,cx:(a+c)/2,cy:(b+d)/2};}
+const MAXEXT=Math.max(...GLYPHS.map(g=>{const b=bbox(g._raw);return Math.max(b.w,b.h);}));
+function glyphSVG(g,w=100,h=80,pad=Math.min(w,h)*0.14){
+  const scale=(Math.min(w,h)-2*pad)/MAXEXT, b=bbox(g._raw);
+  const ox=w/2-b.cx*scale, oy=h/2-b.cy*scale;
+  const d=g._raw.map((p,i)=>(i?'L':'M')+(p[0]*scale+ox).toFixed(1)+' '+(p[1]*scale+oy).toFixed(1)).join(' ');
+  return `<svg viewBox="0 0 ${w} ${h}"><path d="${d}"/></svg>`;
+}
+// template + user stroke aligned in the recognizer's normalized frame
+function overlaySVG(g, stroke, w=40, h=40, pad=5){
+  const tn=g._norm;
+  const sn=(stroke&&stroke.length>1)?normShape(resample(stroke,N)):null;
+  let maxa=0; const scan=p=>{maxa=Math.max(maxa,Math.abs(p[0]),Math.abs(p[1]));};
+  tn.forEach(scan); if(sn) sn.forEach(scan);
+  const s=(Math.min(w,h)/2-pad)/(maxa||1), cx=w/2, cy=h/2;
+  const toPath=pts=>pts.map((p,i)=>(i?'L':'M')+(cx+p[0]*s).toFixed(1)+' '+(cy+p[1]*s).toFixed(1)).join(' ');
+  const usr=sn?`<path class="usr" d="${toPath(sn)}"/>`:'';
+  return `<svg viewBox="0 0 ${w} ${h}"><path class="tpl" d="${toPath(tn)}"/>${usr}</svg>`;
+}
+
+/* ---------- app state ---------- */
+let mode='words', hints=true, testLen=25;
+let twWords=[], twLetters=[], twPos=0, twState='idle', twStart=0, twElapsed=0, twTimer=null;
+
+const WORDS=[
+  {en:'net',keys:['N','E','T']},   {en:'pen',keys:['P','E','N']},
+  {en:'dog',keys:['D','O','G']},   {en:'red',keys:['R','E','D']},
+  {en:'get',keys:['G','E','T']},   {en:'man',keys:['M','A','N']},
+  {en:'van',keys:['V','A','N']},   {en:'rock',keys:['R','O','K']},
+  {en:'leaf',keys:['L','E','F']},  {en:'ship',keys:['SH','E','P']},
+  {en:'job',keys:['J','O','B']},   {en:'moon',keys:['M','OO','N']},
+  {en:'cash',keys:['K','A','SH']}, {en:'fish',keys:['F','E','SH']},
+  {en:'bed',keys:['B','E','D']},   {en:'top',keys:['T','O','P']},
+  {en:'ten',keys:['T','E','N']},   {en:'den',keys:['D','E','N']},
+  {en:'jet',keys:['J','E','T']},   {en:'vet',keys:['V','E','T']},
+  {en:'men',keys:['M','E','N']},   {en:'leg',keys:['L','E','G']},
+  {en:'set',keys:['S','E','T']},   {en:'cat',keys:['K','A','T']},
+  {en:'map',keys:['M','A','P']},   {en:'nap',keys:['N','A','P']},
+  {en:'rat',keys:['R','A','T']},   {en:'bag',keys:['B','A','G']},
+  {en:'jam',keys:['J','A','M']},   {en:'fan',keys:['F','A','N']},
+  {en:'pan',keys:['P','A','N']},   {en:'tag',keys:['T','A','G']},
+  {en:'gas',keys:['G','A','S']},   {en:'lab',keys:['L','A','B']},
+  {en:'dad',keys:['D','A','D']},   {en:'sad',keys:['S','A','D']},
+  {en:'not',keys:['N','O','T']},   {en:'pot',keys:['P','O','T']},
+  {en:'lot',keys:['L','O','T']},   {en:'got',keys:['G','O','T']},
+  {en:'mop',keys:['M','O','P']},   {en:'rob',keys:['R','O','B']},
+  {en:'fog',keys:['F','O','G']},   {en:'jog',keys:['J','O','G']},
+  {en:'nod',keys:['N','O','D']},   {en:'dot',keys:['D','O','T']},
+  {en:'sock',keys:['S','O','K']},  {en:'chop',keys:['CH','O','P']},
+  {en:'shop',keys:['SH','O','P']}, {en:'shed',keys:['SH','E','D']},
+  {en:'dish',keys:['D','E','SH']}, {en:'mesh',keys:['M','E','SH']},
+  {en:'rich',keys:['R','E','CH']}, {en:'chat',keys:['CH','A','T']},
+  {en:'chin',keys:['CH','E','N']}, {en:'match',keys:['M','A','CH']},
+  {en:'food',keys:['F','OO','D']}, {en:'mood',keys:['M','OO','D']},
+  {en:'noon',keys:['N','OO','N']}, {en:'room',keys:['R','OO','M']},
+  {en:'roof',keys:['R','OO','F']}, {en:'tool',keys:['T','OO','L']},
+  {en:'cool',keys:['K','OO','L']}, {en:'boot',keys:['B','OO','T']},
+  {en:'pool',keys:['P','OO','L']}, {en:'soon',keys:['S','OO','N']},
+  {en:'move',keys:['M','OO','V']}, {en:'team',keys:['T','E','M']},
+  {en:'deep',keys:['D','E','P']},  {en:'seal',keys:['S','E','L']},
+  {en:'soap',keys:['S','O','P']},  {en:'safe',keys:['S','A','F']},
+  {en:'vote',keys:['V','O','T']},  {en:'coat',keys:['K','O','T']},
+  {en:'road',keys:['R','O','D']},  {en:'goal',keys:['G','O','L']},
+];
+
+function currentTarget(){
+  if(mode==='words' && twState!=='done' && twPos<twLetters.length) return twLetters[twPos].g;
+  return null;
+}
+function ghost(){ return (mode==='words' && !hints) ? null : currentTarget(); }
+
+/* ---------- canvas: fullscreen ink (words) / pad (letters) ---------- */
+const ink=document.getElementById('ink'), ctx=ink.getContext('2d');
+let DPR=Math.max(1,window.devicePixelRatio||1);
+function cw(){return ink.getBoundingClientRect().width;}
+function chh(){return ink.getBoundingClientRect().height;}
+function origin(){ // where strokes begin and ink is anchored
+  return mode==='words' ? [cw()/2, chh()*0.68] : [cw()/2, chh()/2];
+}
+function fit(){
+  const r=ink.getBoundingClientRect();
+  ink.width=r.width*DPR; ink.height=r.height*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  redraw(ghost());
+  if(mode==='words') centerTape();
+}
+window.addEventListener('resize',fit);
+
+/* Strokes live in VIRTUAL coordinates: every stroke starts at [0,0]; only the
+   motion (deltas) matters. Drawn from origin(), recentered after each pause. */
+let path=[], penV=[0,0], displayOff=[0,0], drawing=false, locked=false;
+let pendingClear=false, idleTimer=null;
+
+function drawGrid(){ // letters mode only
+  const w=cw(),h=chh(), step=pxPerUnit, cx=w/2, cy=h/2;
+  ctx.save();
+  ctx.strokeStyle='rgba(28,27,24,0.07)'; ctx.lineWidth=1; ctx.setLineDash([2,5]);
+  for(let x=cx%step; x<w; x+=step){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+  for(let y=cy%step; y<h; y+=step){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  ctx.setLineDash([]); ctx.strokeStyle='rgba(201,80,0,0.20)';
+  ctx.beginPath();ctx.moveTo(0,cy);ctx.lineTo(w,cy);ctx.stroke();
+  ctx.restore();
+}
+function drawStrokeScaled(raw,o){ // guide anchored so its START sits at the origin marker
+  const s=raw[0];
+  ctx.beginPath();
+  raw.forEach((p,i)=>{const x=o[0]+(p[0]-s[0])*pxPerUnit, y=o[1]+(p[1]-s[1])*pxPerUnit; i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
+  ctx.stroke();
+}
+function redraw(g){
+  const w=cw(),h=chh(), o=origin();
+  ctx.clearRect(0,0,w,h);
+  if(mode==='letters') drawGrid();
+  if(g && locked){
+    ctx.save(); ctx.globalAlpha=.20; ctx.strokeStyle='#C95000'; ctx.lineWidth=8;
+    ctx.lineCap='round'; ctx.lineJoin='round';
+    drawStrokeScaled(g._raw,o);
+    ctx.restore();
+  }
+  if(locked && !drawing){
+    ctx.save(); ctx.strokeStyle='rgba(201,80,0,0.55)'; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.arc(o[0],o[1],8,0,7); ctx.stroke(); ctx.restore();
+  }
+  if(path.length>1){
+    ctx.strokeStyle='#1c1b18'; ctx.lineWidth=3.2; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath(); ctx.moveTo(path[0][0]+displayOff[0],path[0][1]+displayOff[1]);
+    for(let i=1;i<path.length;i++)ctx.lineTo(path[i][0]+displayOff[0],path[i][1]+displayOff[1]);
+    ctx.stroke();
+  }
+  if(locked && drawing){
+    const px=path[path.length-1][0]+displayOff[0], py=path[path.length-1][1]+displayOff[1];
+    ctx.fillStyle='#C95000'; ctx.beginPath(); ctx.arc(px,py,4,0,7); ctx.fill();
+  }
+}
+function resetIdle(){ clearTimeout(idleTimer); idleTimer=setTimeout(finishStroke, mode==='words'?300:480); }
+function resetPad(){ path=[]; drawing=false; pendingClear=false; penV=[0,0]; }
+
+function finishStroke(){
+  clearTimeout(idleTimer);
+  if(!drawing || pathLen(path)<14){ drawing=false; return; }
+  drawing=false;
+  const res=recognize(path);
+  if(res.length){
+    if(mode==='words') handleTestStroke(res, path);
+    else showFreeResult(res, path);
+  }
+  pendingClear=true; penV=[0,0];
+  redraw(ghost());
+}
+
+/* pointer lock: pure motion, no button, pause = commit */
+function requestLock(){ if(ink.requestPointerLock) ink.requestPointerLock(); }
+document.addEventListener('pointerlockchange',()=>{
+  locked=(document.pointerLockElement===ink);
+  document.getElementById('foot').classList.toggle('dim',locked);
+  document.getElementById('dict').classList.toggle('dim',locked);
+  const cue=document.getElementById('padCue');
+  if(cue) cue.style.display=locked?'none':'flex';
+  if(locked){ resetPad(); }
+  redraw(ghost());
+});
+ink.addEventListener('mousemove',e=>{
+  if(!locked) return;
+  if(pendingClear){ path=[]; pendingClear=false; }
+  if(!drawing){
+    drawing=true; penV=[0,0]; path=[[0,0]]; displayOff=origin();
+    if(mode==='words') startTimerOnce();
+  }
+  penV=[penV[0]+e.movementX, penV[1]+e.movementY];
+  const last=path[path.length-1];
+  if(Math.hypot(penV[0]-last[0],penV[1]-last[1])>1.2) path.push([penV[0],penV[1]]);
+  redraw(ghost());
+  resetIdle();
+});
+ink.addEventListener('mousedown',e=>{
+  if(locked)return;
+  if(ink.requestPointerLock){ requestLock(); return; }
+  const r=ink.getBoundingClientRect(); // fallback: drag-draw without Pointer Lock
+  drawing=true; displayOff=[0,0]; path=[[e.clientX-r.left,e.clientY-r.top]];
+});
+ink.addEventListener('mousemove',e=>{
+  if(locked||!drawing)return; const r=ink.getBoundingClientRect();
+  const p=[e.clientX-r.left,e.clientY-r.top], last=path[path.length-1];
+  if(Math.hypot(p[0]-last[0],p[1]-last[1])>1.2) path.push(p);
+  redraw(ghost()); resetIdle();
+});
+window.addEventListener('mouseup',()=>{ if(!locked&&drawing) finishStroke(); });
+
+/* scroll or +/- resizes writing scale */
+function setZoom(f){
+  pxPerUnit=Math.max(20,Math.min(120,pxPerUnit*f));
+  document.getElementById('zoomLabel').textContent=Math.round(pxPerUnit/42*100)+'%';
+  redraw(ghost());
+}
+ink.addEventListener('wheel',e=>{ e.preventDefault(); setZoom(e.deltaY<0?1.08:1/1.08); },{passive:false});
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'&&locked){ e.preventDefault(); resetPad(); redraw(ghost()); }
+  else if(e.key==='Tab'){ e.preventDefault(); if(mode==='words') startTest(); }
+  else if(e.key==='+'||e.key==='='){ setZoom(1.08); }
+  else if(e.key==='-'||e.key==='_'){ setZoom(1/1.08); }
+});
+
+/* ---------- words test ---------- */
+const tapeEl=document.getElementById('tape'), liveEl=document.getElementById('live'),
+      resultsEl=document.getElementById('results');
+function startTest(){
+  clearInterval(twTimer);
+  twWords=[]; for(let i=0;i<testLen;i++) twWords.push(WORDS[Math.floor(Math.random()*WORDS.length)]);
+  twLetters=[];
+  twWords.forEach((w,wi)=>w.keys.forEach(k=>twLetters.push({wi,k,g:GLYPHS.find(g=>g.k===k),ok:null,got:null,stroke:null})));
+  twPos=0; twState='ready'; twElapsed=0;
+  resultsEl.classList.remove('show'); liveEl.classList.remove('show');
+  resetPad(); renderTape(); redraw(ghost());
+}
+function startTimerOnce(){
+  if(twState==='ready'){
+    twState='running'; twStart=performance.now();
+    liveEl.classList.add('show');
+    clearInterval(twTimer);
+    twTimer=setInterval(()=>{ if(twState==='running') updateLive(); },100);
+  }
+}
+function updateLive(){
+  const el=(performance.now()-twStart)/1000;
+  liveEl.textContent=`${el.toFixed(1)}s · ${Math.min(twPos,twLetters.length)}/${twLetters.length}`;
+}
+function curWordIdx(){ return twPos<twLetters.length ? twLetters[twPos].wi : twWords.length-1; }
+function renderTape(){
+  const curWi=twPos<twLetters.length?twLetters[twPos].wi:twWords.length;
+  tapeEl.innerHTML=twWords.map((w,wi)=>{
+    const base=twLetters.findIndex(l=>l.wi===wi);
+    const ls=w.keys.map((k,li)=>{
+      const gi=base+li, l=twLetters[gi];
+      if(gi<twPos) return `<span class="slot ${l.ok?'ok':'err'}">${overlaySVG(l.g,l.stroke)}</span>`;
+      if(gi===twPos) return `<span class="slot cur"><i class="dot"></i></span>`;
+      return `<span class="slot"><i class="dot"></i></span>`;
+    }).join('');
+    let cls='word';
+    if(wi<curWi) cls+=twLetters.filter(l=>l.wi===wi).every(l=>l.ok)?' done':' done err';
+    else if(wi===curWi) cls+=' cur';
+    return `<div class="${cls}"><div class="en">${w.en}</div><div class="slots">${ls}</div></div>`;
+  }).join('');
+  centerTape();
+}
+function centerTape(){
+  const el=tapeEl.children[curWordIdx()]; if(!el) return;
+  const x=window.innerWidth/2-(el.offsetLeft+el.offsetWidth/2);
+  tapeEl.style.transform=`translateX(${x}px)`;
+}
+function handleTestStroke(res, inputPath){
+  if(twPos>=twLetters.length) return;
+  const cur=twLetters[twPos];
+  cur.got=res[0].g.k; cur.ok=(res[0].g.k===cur.k); // record, never block
+  cur.stroke=inputPath.map(p=>p.slice());
+  twPos++;
+  if(twPos>=twLetters.length) finishTest();
+  else { renderTape(); updateLive(); }
+}
+function finishTest(){
+  twState='done'; clearInterval(twTimer); liveEl.classList.remove('show');
+  document.exitPointerLock&&document.exitPointerLock();
+  twElapsed=(performance.now()-twStart)/1000;
+  const total=twLetters.length, correct=twLetters.filter(l=>l.ok).length;
+  const acc=Math.round(correct/total*100), mins=Math.max(twElapsed/60,1e-6);
+  document.getElementById('rWpm').textContent=Math.round(twWords.length/mins);
+  document.getElementById('rAcc').textContent=acc+'%';
+  document.getElementById('rTime').textContent=twElapsed.toFixed(1)+'s';
+  document.getElementById('rStrokes').textContent=`${correct}/${total}`;
+  document.getElementById('resGrid').innerHTML=twWords.map((w,wi)=>{
+    const base=twLetters.findIndex(l=>l.wi===wi);
+    const gl=w.keys.map((k,li)=>{
+      const l=twLetters[base+li];
+      return `<span class="${l.ok?'':'er'}" title="${l.ok?'':'read as '+(l.got||'?').toLowerCase()}">${overlaySVG(l.g,l.stroke,44,38)}</span>`;
+    }).join('');
+    const allok=twLetters.filter(l=>l.wi===wi).every(l=>l.ok);
+    return `<div class="rw ${allok?'':'err'}"><div class="rwen">${w.en}</div><div class="strokes">${gl}</div></div>`;
+  }).join('');
+  resultsEl.classList.add('show');
+}
+document.getElementById('again').addEventListener('click',startTest);
+
+/* ---------- letters mode ---------- */
+const freeResEl=document.getElementById('freeRes');
+function showFreeResult(res, inputPath){
+  const best=res[0];
+  const alts=res.slice(1,4).map(r=>`<span class="a">${glyphSVG(r.g,30,24)}<div>${r.g.en}</div></span>`).join('');
+  freeResEl.innerHTML=`
+    <div class="gsvg">${glyphSVG(best.g,120,96)}</div>
+    <div class="big">${best.g.en}</div>
+    <div class="meta">confidence <b>${(best.conf*100|0)}%</b>
+      <div class="alts">${alts}</div>
+    </div>`;
+}
+
+/* ---------- mode switch ---------- */
+const mWords=document.getElementById('mWords'), mLetters=document.getElementById('mLetters');
+function setMode(m){
+  mode=m;
+  document.exitPointerLock&&document.exitPointerLock();
+  mWords.classList.toggle('on',m==='words');
+  mLetters.classList.toggle('on',m==='letters');
+  document.body.classList.toggle('letters',m==='letters');
+  if(m==='letters'){
+    document.getElementById('padSlot').appendChild(ink);
+    resultsEl.classList.remove('show'); liveEl.classList.remove('show');
+    clearInterval(twTimer);
+  }else{
+    document.body.appendChild(ink);
+    startTest();
+  }
+  resetPad(); fit();
+}
+mWords.addEventListener('click',()=>setMode('words'));
+mLetters.addEventListener('click',()=>setMode('letters'));
+
+/* ---------- config ---------- */
+document.getElementById('cfgHints').addEventListener('click',e=>{
+  hints=!hints; e.currentTarget.classList.toggle('on',hints); redraw(ghost());
+});
+let showDict=false;
+document.getElementById('cfgDict').addEventListener('click',e=>{
+  showDict=!showDict;
+  e.currentTarget.classList.toggle('on',showDict);
+  document.getElementById('dict').classList.toggle('show',showDict);
+});
+document.querySelectorAll('.lenBtn').forEach(b=>b.addEventListener('click',()=>{
+  testLen=+b.dataset.len;
+  document.querySelectorAll('.lenBtn').forEach(x=>x.classList.toggle('on',x===b));
+  if(mode==='words') startTest();
+}));
+document.getElementById('zoomIn').addEventListener('click',()=>setZoom(1.12));
+document.getElementById('zoomOut').addEventListener('click',()=>setZoom(1/1.12));
+
+/* ---------- alphabet chart ---------- */
+document.getElementById('chart').innerHTML=GLYPHS.map(g=>
+  `<div class="cell">${glyphSVG(g,52,40)}<div class="lab">${g.en}</div></div>`).join('');
+document.getElementById('dict').innerHTML=GLYPHS.map(g=>
+  `<div class="d">${glyphSVG(g,36,28)}<div class="lab">${g.en}</div></div>`).join('');
+
+startTest();
+fit();
+</script>
+</body>
+</html>

@@ -438,6 +438,52 @@ def src_chess(size=1000):
     return king.resize((size, size), Image.LANCZOS)
 
 
+# ---------------------------------------------------------------- gregg tutor
+# A flowing Gregg-shorthand outline: one continuous pen stroke that sweeps in,
+# throws a tall loop (an "l"/"r"-style curve), rounds a vowel circle, and tails
+# off — the single-fluid-motion look that reads as shorthand handwriting at
+# thumbnail size, drawn with a round pen so it survives the coarse block grid.
+def src_gregg(size=1000):
+    W = H = size * SS
+    img = Image.new("L", (W, H), 255)
+    d = ImageDraw.Draw(img)
+
+    def bez(p0, p1, p2, p3, n=140):
+        out = []
+        for i in range(n + 1):
+            t = i / n; u = 1 - t
+            x = (u**3)*p0[0] + 3*u*u*t*p1[0] + 3*u*t*t*p2[0] + (t**3)*p3[0]
+            y = (u**3)*p0[1] + 3*u*u*t*p1[1] + 3*u*t*t*p2[1] + (t**3)*p3[1]
+            out.append((x, y))
+        return out
+
+    def circ(cx, cy, r, a0, a1, n=120):
+        return [(cx + r*math.cos(a), cy + r*math.sin(a))
+                for a in (a0 + (a1 - a0)*i/n for i in range(n + 1))]
+
+    # unit layout on a centred baseline, scaled to the canvas
+    S = W * 0.30; ox, oy = W * 0.30, H * 0.52
+    def P(x, y): return (ox + x*S, oy - y*S)
+
+    # entry sweep -> tall loop -> vowel circle -> tail  (one connected motion)
+    pts  = bez(P(0, .05), P(.35, .10), P(.55, .55), P(.72, 1.15))          # up-sweep into the loop
+    pts += bez(P(.72, 1.15), P(.86, 1.55), P(.58, 1.62), P(.60, 1.15))[1:] # crest, curl back left
+    pts += bez(P(.60, 1.15), P(.62, .70), P(.95, .55), P(1.28, .60))[1:]   # down out of the loop
+    # vowel circle sitting on the baseline, entered from the left
+    cc = P(1.55, .55); cr = S * 0.26
+    pts += circ(cc[0], cc[1], cr, math.radians(160), math.radians(160+330))[1:]
+    pts += bez((cc[0]+cr*math.cos(math.radians(130)), cc[1]+cr*math.sin(math.radians(130))),
+               P(1.95, .70), P(2.15, .35), P(2.45, .28))[1:]               # tail off to the right
+
+    pen = max(12, int(W * 0.032))
+    d.line(pts, fill=0, width=pen, joint="curve")
+    for e in (pts[0], pts[-1]):                                            # round the pen ends
+        d.ellipse([e[0]-pen/2, e[1]-pen/2, e[0]+pen/2, e[1]+pen/2], fill=0)
+
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0016))
+    return img.resize((size, size), Image.LANCZOS)
+
+
 # ---------------------------------------------------------------- minesweeper
 # The classic minesweeper mine: a solid orb with fat radiating spikes and a
 # little square shine. All solid masses (orb + thick spikes) so nothing thins
@@ -519,6 +565,7 @@ if __name__ == "__main__":
     asciify(src_printer(), C + r"\printer.webp")          # thermal receipt printer
     asciify(src_minesweeper(), C + r"\minesweeper.webp")  # infinite minesweeper mine
     asciify(src_sudoku(), C + r"\sudoku.webp")            # daily sudoku grid
+    asciify(src_gregg(),  C + r"\gregg-tutor.webp")       # gregg shorthand outline
     asciify(src_eye(),     C + r"\eye.webp", cut=205)     # vision1 eye easter egg (1/100 wall tile)
     asciify(src_eye_closed(), C + r"\eye-closed.webp", cut=205)  # favicon blink (tab blur)
     # lissajous / discord / make-your-own: re-screen the original letter-ASCII art
