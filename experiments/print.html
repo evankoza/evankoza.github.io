@@ -168,6 +168,12 @@
   button.primary:disabled { opacity: .5; cursor: not-allowed; }
   button.danger { color: #c92a2a; }
   button.danger:hover { border-color: #c92a2a; color: #c92a2a; }
+  .seg { display: inline-flex; gap: 4px; }
+  .brushBtn { padding: 6px 12px; }
+  .brushBtn.active { background: var(--pumpkin); color: #fff; border-color: var(--pumpkin); }
+  .brushBtn.active:hover { color: #fff; }
+  .hint { color: var(--ink-faint); font-size: 11px; margin: 4px 0 2px; }
+  #paper.painting { cursor: crosshair; }
   #elementList { display: flex; flex-direction: column; gap: 6px; }
   .elItem {
     display: flex; align-items: center; gap: 8px; padding: 6px 8px;
@@ -237,6 +243,7 @@
       <div class="row">
         <button id="addText">＋ Text</button>
         <button id="addImage">＋ Image</button>
+        <button id="addDraw">＋ Draw</button>
         <input type="file" id="imageFile" accept="image/*" hidden>
         <span style="flex:1"></span>
         <button id="fitHeight" title="Shrink/grow the paper to fit the content">Fit paper</button>
@@ -266,6 +273,24 @@
       </div>
       <div id="imageProps" hidden>
         <div class="row"><label>Scale</label><input type="range" id="imgScale" min="5" max="200" value="100"><output>100</output></div>
+      </div>
+      <div id="drawProps" hidden>
+        <div class="row">
+          <label>Brush</label>
+          <div class="seg" id="brushSeg">
+            <button class="brushBtn active" data-brush="black">Black</button>
+            <button class="brushBtn" data-brush="white">White</button>
+            <button class="brushBtn" data-brush="erase">Erase</button>
+          </div>
+        </div>
+        <div class="row"><label>Brush size</label><input type="range" id="brushSize" min="1" max="60" value="8"><output>8</output></div>
+        <div class="row"><button id="clearDraw" class="danger">Clear layer</button></div>
+        <div class="hint">Draw right on the paper. <b>Black</b> paints ink, <b>White</b> paints over lower layers, <b>Erase</b> reveals what's below.</div>
+      </div>
+      <div id="layerAdjust" hidden>
+        <div class="row"><label>Layer bright</label><input type="range" id="layerBright" min="-100" max="100" value="0"><output>0</output></div>
+        <div class="row"><label>Layer contrast</label><input type="range" id="layerContrast" min="-100" max="100" value="0"><output>0</output></div>
+        <div class="row"><label>Opacity</label><input type="range" id="layerOpacity" min="0" max="100" value="100"><output>100</output></div>
       </div>
       <div class="row"><button id="deleteEl" class="danger">Delete element</button></div>
     </section>
@@ -303,6 +328,6 @@
 </main>
 
 <!-- bump ?v= whenever the relay URL in print.js changes, so browsers don't run a stale cached copy -->
-<script src="print.js?v=5"></script>
+<script src="print.js?v=6"></script>
 </body>
 </html>

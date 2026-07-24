@@ -41,11 +41,34 @@ function addImageEl(img, name) {
     id: elSeq++, type: 'image', img, name, x: 10, y: 10,
     w: Math.round(img.width * scale), h: Math.round(img.height * scale),
     aspect: img.width / img.height,
+    bright: 0, contrast: 0, opacity: 100,
   };
   elements.push(el); select(el); render();
 }
 
+// A freehand layer: its own full-width transparent canvas the visitor paints
+// on with black/white/erase brushes. Composited over the layers beneath it.
+function addDrawEl() {
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = MAX_H;
+  const el = {
+    id: elSeq++, type: 'draw', name: 'drawing', canvas,
+    dctx: canvas.getContext('2d'),
+    brush: 'black', brushSize: 8,
+    bright: 0, contrast: 0, opacity: 100,
+  };
+  elements.push(el); select(el); render();
+}
+
+// CSS filter string for a layer's per-layer brightness/contrast (or 'none').
+function layerFilter(el) {
+  const b = 1 + (el.bright || 0) / 100;   // 0..2, 1 = unchanged
+  const c = 1 + (el.contrast || 0) / 100;
+  return (b === 1 && c === 1) ? 'none' : `brightness(${b}) contrast(${c})`;
+}
+
 function elBounds(el) {
+  if (el.type === 'draw') return { x: 0, y: 0, w: W, h: paperH };
   if (el.type === 'image') return { x: el.x, y: el.y, w: el.w, h: el.h };
   cctx.font = `${el.bold ? 'bold ' : ''}${el.size}px ${el.font}`;
   const lines = el.text.split('\n');
@@ -76,8 +99,13 @@ function renderCompose() {
   cctx.fillRect(0, 0, W, paperH);
   cctx.fillStyle = '#000';
   for (const el of elements) {
-    if (el.type === 'image') {
-      cctx.drawImage(el.img, el.x, el.y, el.w, el.h);
+    if (el.type === 'image' || el.type === 'draw') {
+      cctx.save();
+      cctx.globalAlpha = (el.opacity ?? 100) / 100;
+      cctx.filter = layerFilter(el);
+      if (el.type === 'image') cctx.drawImage(el.img, el.x, el.y, el.w, el.h);
+      else cctx.drawImage(el.canvas, 0, 0);       // full-page paint layer
+      cctx.restore();
     } else {
       cctx.font = `${el.bold ? 'bold ' : ''}${el.size}px ${el.font}`;
       cctx.textBaseline = 'top';
@@ -232,7 +260,8 @@ let latestBits = null;
 
 function drawSelection() {
   overlay.innerHTML = '';
-  if (!selected) return;
+  paper.classList.toggle('painting', !!selected && selected.type === 'draw');
+  if (!selected || selected.type === 'draw') return;   // draw layer: paint, no box
   const b = elBounds(selected);
   const box = document.createElement('div');
   box.className = 'selbox';
@@ -260,6 +289,8 @@ function refreshElementList() {
     item.dataset.index = i;
     const label = el.type === 'text'
       ? `📝 ${el.text.split('\n')[0].slice(0, 30) || '(empty)'}`
+      : el.type === 'draw'
+      ? `✏️ ${el.name || 'drawing'}`
       : `🖼 ${el.name || 'image'}`;
     item.innerHTML = `<span class="grip">⠿</span><span class="name"></span><button class="del" title="Delete layer">✕</button>`;
     item.querySelector('.name').textContent = label;
@@ -309,26 +340,43 @@ function refreshElementList() {
   }
 }
 
+function setSlider(id, val) {
+  $(id).value = val;
+  if ($(id).nextElementSibling?.tagName === 'OUTPUT') $(id).nextElementSibling.value = val;
+}
+
 function refreshPropsPanel() {
   $('elProps').hidden = !selected;
   if (!selected) return;
-  $('textProps').hidden = selected.type !== 'text';
-  $('imageProps').hidden = selected.type !== 'image';
-  if (selected.type === 'text') {
+  const isText = selected.type === 'text';
+  const isImage = selected.type === 'image';
+  const isDraw = selected.type === 'draw';
+  $('textProps').hidden = !isText;
+  $('imageProps').hidden = !isImage;
+  $('drawProps').hidden = !isDraw;
+  $('layerAdjust').hidden = !(isImage || isDraw);   // per-layer bright/contrast/opacity
+  if (isText) {
     $('textContent').value = selected.text;
     $('textFont').value = selected.font;
     $('textAlign').value = selected.align;
     $('textBold').checked = selected.bold;
-    $('textSize').value = selected.size;
-    $('textSize').nextElementSibling.value = selected.size;
-  } else {
-    const pct = Math.round(selected.w / selected.img.width * 100);
-    $('imgScale').value = pct;
-    $('imgScale').nextElementSibling.value = pct;
+    setSlider('textSize', selected.size);
+  } else if (isImage) {
+    setSlider('imgScale', Math.round(selected.w / selected.img.width * 100));
+  } else if (isDraw) {
+    setSlider('brushSize', selected.brushSize);
+    for (const b of document.querySelectorAll('.brushBtn'))
+      b.classList.toggle('active', b.dataset.brush === selected.brush);
+  }
+  if (isImage || isDraw) {
+    setSlider('layerBright', selected.bright || 0);
+    setSlider('layerContrast', selected.contrast || 0);
+    setSlider('layerOpacity', selected.opacity ?? 100);
   }
 }
 
 $('addText').addEventListener('click', addTextEl);
+$('addDraw').addEventListener('click', addDrawEl);
 $('addImage').addEventListener('click', () => $('imageFile').click());
 $('imageFile').addEventListener('change', e => {
   const f = e.target.files[0];
@@ -356,6 +404,35 @@ $('imgScale').addEventListener('input', e => {
     render();
   }
 });
+
+// ---- draw-layer controls ----
+$('brushSeg').addEventListener('click', e => {
+  const btn = e.target.closest('.brushBtn');
+  if (!btn || !selected || selected.type !== 'draw') return;
+  selected.brush = btn.dataset.brush;
+  for (const b of document.querySelectorAll('.brushBtn'))
+    b.classList.toggle('active', b === btn);
+});
+$('brushSize').addEventListener('input', e => {
+  e.target.nextElementSibling.value = e.target.value;
+  if (selected && selected.type === 'draw') selected.brushSize = +e.target.value;
+});
+$('clearDraw').addEventListener('click', () => {
+  if (!selected || selected.type !== 'draw') return;
+  selected.dctx.clearRect(0, 0, W, MAX_H);
+  render();
+});
+
+// ---- per-layer brightness / contrast / opacity (image + draw) ----
+for (const [id, prop] of [['layerBright', 'bright'], ['layerContrast', 'contrast'], ['layerOpacity', 'opacity']]) {
+  $(id).addEventListener('input', e => {
+    e.target.nextElementSibling.value = e.target.value;
+    if (selected && (selected.type === 'image' || selected.type === 'draw')) {
+      selected[prop] = +e.target.value;
+      render();
+    }
+  });
+}
 
 for (const id of ['dither', 'brightness', 'contrast', 'threshold', 'cellSize', 'invert']) {
   $(id).addEventListener('input', e => {
@@ -394,17 +471,61 @@ $('paperGrip').addEventListener('pointerdown', e => {
   $('paperGrip').addEventListener('pointerup', up);
 });
 
-// ---------- drag / resize on the paper ----------
+// ---------- drag / resize / paint on the paper ----------
 const paper = document.getElementById('paper');
 let drag = null;
+let paintStroke = null;
+
+// pointer position in canvas pixels (handles any CSS scaling of the paper)
+function paperXY(e) {
+  const r = paper.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (paperH / r.height) };
+}
+
+function applyBrush(el) {
+  const c = el.dctx;
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  c.lineWidth = el.brushSize;
+  if (el.brush === 'erase') {
+    c.globalCompositeOperation = 'destination-out';
+    c.strokeStyle = c.fillStyle = '#000';
+  } else {
+    c.globalCompositeOperation = 'source-over';
+    c.strokeStyle = c.fillStyle = el.brush === 'white' ? '#fff' : '#000';
+  }
+}
+function paintDot(el, x, y) {
+  applyBrush(el);
+  el.dctx.beginPath();
+  el.dctx.arc(x, y, el.brushSize / 2, 0, Math.PI * 2);
+  el.dctx.fill();
+}
+function paintLine(el, a, b) {
+  applyBrush(el);
+  el.dctx.beginPath();
+  el.dctx.moveTo(a.x, a.y); el.dctx.lineTo(b.x, b.y);
+  el.dctx.stroke();
+}
 
 paper.addEventListener('pointerdown', e => {
   if (e.target.classList.contains('handle')) return;
-  const r = paper.getBoundingClientRect();
-  const x = e.clientX - r.left, y = e.clientY - r.top;
-  // topmost element under cursor
+
+  // a selected draw layer turns the paper into a canvas: paint, don't select
+  if (selected && selected.type === 'draw') {
+    e.preventDefault();
+    paper.setPointerCapture(e.pointerId);
+    const p = paperXY(e);
+    paintStroke = { el: selected, last: p };
+    paintDot(selected, p.x, p.y);
+    render();
+    return;
+  }
+
+  const { x, y } = paperXY(e);
+  // topmost non-draw element under cursor (draw layers are full-page: skip them)
   let hit = null;
   for (let i = elements.length - 1; i >= 0; i--) {
+    if (elements[i].type === 'draw') continue;
     const b = elBounds(elements[i]);
     if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { hit = elements[i]; break; }
   }
@@ -415,13 +536,21 @@ paper.addEventListener('pointerdown', e => {
   }
 });
 paper.addEventListener('pointermove', e => {
+  if (paintStroke) {
+    const p = paperXY(e);
+    paintLine(paintStroke.el, paintStroke.last, p);
+    paintStroke.last = p;
+    render();
+    return;
+  }
   if (!drag) return;
-  const r = paper.getBoundingClientRect();
-  drag.el.x = Math.round(e.clientX - r.left - drag.dx);
-  drag.el.y = Math.round(e.clientY - r.top - drag.dy);
+  const { x, y } = paperXY(e);
+  drag.el.x = Math.round(x - drag.dx);
+  drag.el.y = Math.round(y - drag.dy);
   render();
 });
-paper.addEventListener('pointerup', () => { drag = null; });
+paper.addEventListener('pointerup', () => { drag = null; paintStroke = null; });
+paper.addEventListener('pointercancel', () => { drag = null; paintStroke = null; });
 
 function startResize(e) {
   e.stopPropagation();
