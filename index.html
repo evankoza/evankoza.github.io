@@ -1554,8 +1554,14 @@
                                  //   banner shrink on small screens (lower = they
                                  //   stay bigger / shrink slower); 1 = shrink linearly
     const heroBox = document.querySelector(".hero");
-    const widthRatio = () =>
-      Math.min(1, (heroBox ? heroBox.offsetWidth : window.innerWidth) / HERO_REF_W);
+    // heroBox.offsetWidth forces a synchronous layout of the whole document.
+    // widthRatio() feeds curvePixel() and strokeThin(), both of which run inside
+    // drawCurve() — once per letter — so this was being read ~9x per animation
+    // frame, forever. `.hero` is sized purely off the viewport (min(1100px,92vw)),
+    // so it can only change on resize: measure there, serve every frame from here.
+    let heroW = heroBox ? heroBox.offsetWidth : window.innerWidth;
+    const measureHero = () => { heroW = heroBox ? heroBox.offsetWidth : window.innerWidth; };
+    const widthRatio = () => Math.min(1, heroW / HERO_REF_W);
     // portrait size + vertical offsets: gentle falloff so the stack stays a touch
     // larger on phones instead of leaving white space under the head
     const composeScale = () => Math.pow(widthRatio(), SMALL_BOOST);
@@ -1610,6 +1616,7 @@
     });
 
     function resize() {
+      measureHero();          // the one place the hero width is read (see widthRatio)
       for (const s of state) {
         // offsetWidth/Height = layout size, unaffected by the .curves transform,
         // so the EVAN scale (e·scl) never feeds back into the render resolution
@@ -1659,6 +1666,7 @@
     const bannerSrc = document.createElement("canvas");        // pixelated, pre-glitch
     bannerSrc.width = bannerW; bannerSrc.height = bannerH;
     const bannerSrcCtx = bannerSrc.getContext("2d");
+    let bannerSrcKey = "";     // downsample size bannerSrc currently holds ("" = stale)
     const bannerImg = new Image();
     let bannerReady = false;
     bannerImg.onload = () => {
@@ -1668,6 +1676,7 @@
       bannerH = bannerImg.naturalHeight;
       bannerCanvas.width = bannerW;   bannerCanvas.height = bannerH;
       bannerSrc.width = bannerW;      bannerSrc.height = bannerH;
+      bannerSrcKey = "";              // resizing bannerSrc blanked it — force a rebuild
       bannerReady = true;
       resize();   // re-apply the height lock with the new intrinsic ratio
       const n = performance.now();
@@ -1679,22 +1688,33 @@
     function drawBanner(pixel, ms) {
       if (!bannerReady) return;
 
-      // 1. pixelate the image into the source buffer
-      bannerSrcCtx.setTransform(1, 0, 0, 1, 0, 0);
-      bannerSrcCtx.clearRect(0, 0, bannerW, bannerH);
-      if (pixel <= 1.05) {
-        bannerSrcCtx.imageSmoothingEnabled = true;
-        bannerSrcCtx.drawImage(bannerImg, 0, 0, bannerW, bannerH);
-      } else {
-        const lowW = Math.max(1, Math.round(bannerW / pixel));
-        const lowH = Math.max(1, Math.round(bannerH / pixel));
-        bannerLow.width = lowW;
-        bannerLow.height = lowH;
-        bannerLowCtx.imageSmoothingEnabled = true;
-        bannerLowCtx.clearRect(0, 0, lowW, lowH);
-        bannerLowCtx.drawImage(bannerImg, 0, 0, lowW, lowH);
-        bannerSrcCtx.imageSmoothingEnabled = false;
-        bannerSrcCtx.drawImage(bannerLow, 0, 0, lowW, lowH, 0, 0, bannerW, bannerH);
+      // 1. pixelate the image into the source buffer — but only when the result
+      //    would actually differ from what's already in there. This canvas is
+      //    4740x605, so a rebuild rewrites ~2.9M pixels; doing it every frame for
+      //    a pulse that slides the block size between 11 and 12 was pure waste.
+      //    What lands on screen is decided entirely by the ROUNDED downsample
+      //    size, so key the cache on that: it changes a few times a second, not
+      //    sixty. Byte-identical output, a fraction of the fill.
+      const sharp = pixel <= 1.05;
+      const lowW = sharp ? 0 : Math.max(1, Math.round(bannerW / pixel));
+      const lowH = sharp ? 0 : Math.max(1, Math.round(bannerH / pixel));
+      const key = sharp ? "sharp" : lowW + "x" + lowH;
+      if (key !== bannerSrcKey) {
+        bannerSrcKey = key;
+        bannerSrcCtx.setTransform(1, 0, 0, 1, 0, 0);
+        bannerSrcCtx.clearRect(0, 0, bannerW, bannerH);
+        if (sharp) {
+          bannerSrcCtx.imageSmoothingEnabled = true;
+          bannerSrcCtx.drawImage(bannerImg, 0, 0, bannerW, bannerH);
+        } else {
+          bannerLow.width = lowW;
+          bannerLow.height = lowH;
+          bannerLowCtx.imageSmoothingEnabled = true;
+          bannerLowCtx.clearRect(0, 0, lowW, lowH);
+          bannerLowCtx.drawImage(bannerImg, 0, 0, lowW, lowH);
+          bannerSrcCtx.imageSmoothingEnabled = false;
+          bannerSrcCtx.drawImage(bannerLow, 0, 0, lowW, lowH, 0, 0, bannerW, bannerH);
+        }
       }
 
       // 2. present with a CRT glitch: shift horizontal strips by a sine wave
@@ -1789,6 +1809,21 @@
     };
     pickScan();
 
+    // ── budgeted, double-buffered mosaic render ────────────────────────
+    // A full mosaic is ~16k characters — ~80ms on a 6x-throttled CPU. Drawing it
+    // in one go meant a dropped-frame hitch every time the head-spin advanced
+    // (every P_SPIN ms, forever) and, during the intro, on EVERY frame while the
+    // glyph size ramps down. So: paint into an off-screen buffer a few ms at a
+    // time (same trick the about-dither uses) and blit it over the visible canvas
+    // only once it's complete. The visible portrait holds the previous spin frame
+    // until the next one is fully drawn, so the swap is still atomic — it just
+    // lands a few frames later, which is invisible against a 700ms hold.
+    // NB a glyph atlas was tried here too and measured slower — see asciiField.
+    const P_BUDGET = 5;      // ms of mosaic drawing allowed per frame
+    const pWork = document.createElement("canvas");
+    const pWorkCtx = pWork.getContext("2d");
+    let pJob = null;         // in-flight render, or null
+
     let pSizeEff = P_SIZE;   // P_SIZE after the responsive compose-scale
     function layoutPortrait() {
       pSizeEff = P_SIZE * composeScale();
@@ -1799,7 +1834,10 @@
       portraitCanvas.height = Math.round(pSizeEff * dpr);
     }
 
-    function renderPortrait() {
+    // Set up a fresh mosaic render: sample the frame down to one pixel per
+    // character cell, then hand the row loop to pumpPortrait(). Replaces any
+    // job still in flight (the visible canvas keeps the last completed mosaic).
+    function startPortrait() {
       const img = portraitImgs[pIdx];
       if (!img || !img.complete || !img.naturalWidth) return;
 
@@ -1825,14 +1863,29 @@
       pSampleCtx.drawImage(img, sx, sy, sw, sh, 0, 0, cols, rows);
       const data = pSampleCtx.getImageData(0, 0, cols, rows).data;
 
-      const ctx = portraitCtx;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, pSizeEff, pSizeEff);
-      ctx.font = charH + "px ui-monospace, Menlo, Consolas, 'Courier New', monospace";
-      ctx.textBaseline = "top";
+      // the off-screen buffer tracks the visible canvas's backing size
+      if (pWork.width !== portraitCanvas.width || pWork.height !== portraitCanvas.height) {
+        pWork.width = portraitCanvas.width;
+        pWork.height = portraitCanvas.height;
+      }
+      pWorkCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      pWorkCtx.clearRect(0, 0, pSizeEff, pSizeEff);
+      pWorkCtx.font = charH + "px ui-monospace, Menlo, Consolas, 'Courier New', monospace";
+      pWorkCtx.textBaseline = "top";
+      pJob = { data, cols, rows, charH, charW, row: 0, size: pSizeEff };
+    }
 
+    // Draw up to `budget` ms of mosaic rows; when the last row lands, swap the
+    // finished buffer onto the visible canvas in one blit. budget = Infinity
+    // forces a synchronous full render (used for resize / freeze / dev hooks).
+    function pumpPortrait(budget) {
+      if (!pJob) return;
+      const { data, cols, rows, charH, charW } = pJob;
       const N = PORTRAIT_RAMP.length;
-      for (let r = 0; r < rows; r++) {
+      const ctx = pWorkCtx;
+      const deadline = performance.now() + budget;
+      while (pJob.row < rows) {
+        const r = pJob.row++;
         ctx.fillStyle = (P_SCAN > 0 && r % P_SCAN === 0)
           ? PORTRAIT_SCAN_COLOR : PORTRAIT_COLOR;
         const y = r * charH;
@@ -1845,13 +1898,27 @@
           if (ch === " ") continue;
           ctx.fillText(ch, c * charW, y);
         }
+        if (performance.now() >= deadline) break;
       }
+      if (pJob.row < rows) return;                    // more rows next frame
+      portraitCtx.setTransform(1, 0, 0, 1, 0, 0);
+      portraitCtx.clearRect(0, 0, portraitCanvas.width, portraitCanvas.height);
+      portraitCtx.drawImage(pWork, 0, 0);
+      pJob = null;
     }
 
+    // full synchronous render — for layout changes and still captures
+    function renderPortrait() { startPortrait(); pumpPortrait(Infinity); }
+
     layoutPortrait();
-    portraitImgs.forEach((im) => {
-      if (im.complete) renderPortrait();
-      else im.addEventListener("load", () => renderPortrait(), { once: true });
+    // Only the frame actually on screen needs redrawing when an image lands —
+    // without the index guard all eight load events re-rendered frame 0, which
+    // is seven full 16k-glyph mosaics thrown away during load. A late frame
+    // still repairs itself: the spin can't advance past an image that hasn't
+    // loaded, so its own load event arrives while it IS the current frame.
+    portraitImgs.forEach((im, i) => {
+      if (im.complete) { if (i === pIdx) renderPortrait(); }
+      else im.addEventListener("load", () => { if (i === pIdx) renderPortrait(); }, { once: true });
     });
 
     function drawCurve(s, phaseOverride) {
@@ -1941,9 +2008,12 @@
         if (img && img.complete && img.naturalWidth) {
           if (pCharIntroT0 === 0) pCharIntroT0 = now;
           const v = P_CHAR_START - P_CHAR_SPEED * ((now - pCharIntroT0) / 1000);
-          if (v <= P_CHAR) pCharEff = null;   // reached the sweet spot — settle
-          else pCharEff = v;
-          renderPortrait();
+          const settled = v <= P_CHAR;        // reached the sweet spot
+          pCharEff = settled ? null : v;
+          // Queue the next size step only once the previous one has landed. That
+          // self-limits the intro to whatever the device can actually sustain,
+          // instead of starting a fresh full mosaic on every single frame.
+          if (settled || !pJob) startPortrait();
         }
       }
       // advance the head-spin: hold each frame P_SPIN ms, then redraw. Don't run
@@ -1958,9 +2028,10 @@
           pLastSwitch = now;
           pIdx = (pIdx + 1) % portraitImgs.length;
           pickScan();               // new scanline spacing for the new frame
-          renderPortrait();
+          startPortrait();
         }
       }
+      pumpPortrait(P_BUDGET);       // chip away at any mosaic still being drawn
       if (running) requestAnimationFrame(step);
     }
 
@@ -2708,6 +2779,7 @@
     const stackEl = document.getElementById("modal-stack");
     let modalField = null;   // set up in §4
     let currentProject = null;   // index of the project whose modal is open
+    let modalOpen = false;   // any modal up? pauses the section field behind it
 
     // ── 2b. warm the cache while they read ────────────────────────────
     // Opening a modal is a strong signal the visitor may launch the demo
@@ -2798,6 +2870,9 @@
       if (instant) requestAnimationFrame(() =>
         requestAnimationFrame(() => root.classList.remove("no-anim")));
       if (modalField && !reduceMotion) modalField.start();
+      // the section field is behind an opaque scrim now — running both at once
+      // was double the glyph work for a layer nobody can see
+      modalOpen = true; syncField();
     }
     function closeModal() {
       root.classList.remove("open");
@@ -2805,6 +2880,7 @@
       document.body.style.overflow = "";
       currentProject = null;
       if (modalField) modalField.stop();
+      modalOpen = false; syncField();
     }
 
     // ── 3a. remember-where-you-were ───────────────────────────────────
@@ -2898,12 +2974,14 @@
       londonRoot.setAttribute("aria-hidden", "false");
       document.body.style.overflow = "hidden";
       if (londonField && !reduceMotion) londonField.start();
+      modalOpen = true; syncField();
     }
     function closeLondon() {
       londonRoot.classList.remove("open");
       londonRoot.setAttribute("aria-hidden", "true");
       document.body.style.overflow = "";
       if (londonField) londonField.stop();
+      modalOpen = false; syncField();
     }
     document.getElementById("loc-london").addEventListener("click", openLondon);
     document.getElementById("london-close").addEventListener("click", closeLondon);
@@ -2918,54 +2996,70 @@
     // Columns of glyphs drift upward at varying speeds (a "data current")
     // while a slow sine-interference field modulates each glyph's opacity,
     // so it shimmers with structure. Same DNA as the hero's sine curves.
-    function asciiField(canvas, opts) {
-      const ctx = canvas.getContext("2d");
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
+    //
+    // This was the most expensive thing on the page by a wide margin, and the
+    // cost is irreducibly linear in cell count (a glyph atlas measured ~1.8x
+    // SLOWER — Chrome already caches glyph rasters, so an atlas only adds
+    // drawImage overhead; batching cells by quantized alpha bought ~10%). So
+    // rather than make it cheaper, we move it OFF the main thread entirely:
+    // the canvas is handed to a worker via transferControlToOffscreen() and
+    // every glyph is drawn there. Scrolling, dragging and tile clicks then keep
+    // the whole main thread no matter how heavy the field is.
+    //
+    // FIELD_CORE below is the renderer, deliberately written to touch nothing
+    // but a 2D context and plain numbers — no DOM, no closures over page state.
+    // That lets the identical source run in both places: it's stringified into
+    // the worker Blob, and called directly on the main thread when workers or
+    // OffscreenCanvas aren't available. One source of truth for the maths.
+    function FIELD_CORE(ctx, o) {
       const ramp = "01<>{}[]()/\\=+*-|;:.";
-      const charPx = opts.charPx || 18;
-      const advW = charPx * 0.6;
-      const color = opts.color;
-      const baseA = opts.baseAlpha;
-      const ampA = opts.ampAlpha;
-      const speed = opts.speed || 1;     // shimmer speed
-      const flow = opts.flow || 1;       // upward drift speed
-      let W = 0, H = 0, cols = 0, rows = 0, scroll = [], colSpd = [];
-      let running = false, rafId = 0, lastDraw = 0;
-      // this is a subtle background shimmer — 30fps is indistinguishable from 60
-      // and halves the main-thread cost vs repainting on every display frame.
-      const FRAME_MS = 1000 / 30;
+      const BASE_CHAR = o.charPx || 18;
+      // Cell count — and so cost — is proportional to canvas AREA, which grows
+      // without bound with the viewport. Measured on a 6x-throttled CPU: 1280px
+      // wide = 3,864 cells, 1920px = 6,250, 2560px = 8,300 and 6fps. A big
+      // monitor, not a phone, is the worst case (phones are cheap here precisely
+      // because the viewport is small). So cap the cells and let the glyphs grow
+      // instead: charPx is the size that fits MAX_CELLS into this canvas, never
+      // finer than the tuned BASE_CHAR. At the 1280-wide size these values were
+      // tuned on this doesn't bind at all — it only kicks in on larger screens,
+      // where slightly bigger background glyphs read fine anyway.
+      const MAX_CELLS = 4000;
+      const color = o.color, baseA = o.baseAlpha, ampA = o.ampAlpha;
+      const speed = o.speed || 1;        // shimmer speed
+      const flow = o.flow || 1;          // upward drift speed
+      let W = 0, H = 0, R = 0, cols = 0, rows = 0, scroll = [], colSpd = [];
+      let charPx = BASE_CHAR, advW = charPx * 0.6;
 
       const hash = (a, b) => {
         const x = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
         return x - Math.floor(x);
       };
 
-      function resize() {
-        const w = canvas.clientWidth, h = canvas.clientHeight;
-        if (!w || !h) return;
+      // returns true when the grid was actually rebuilt
+      function resize(w, h, ratio) {
+        if (!w || !h) return false;
         // Mobile URL-bar show/hide fires resize on every pixel of height change.
         // Bail when nothing actually changed so we don't needlessly reallocate
         // (and momentarily clear) the canvas on those events.
-        if (w === W && h === H && cols) return;
-        W = w; H = h;
-        canvas.width = Math.round(W * dpr);
-        canvas.height = Math.round(H * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        if (w === W && h === H && ratio === R && cols) return false;
+        W = w; H = h; R = ratio;
+        ctx.canvas.width = Math.round(W * R);
+        ctx.canvas.height = Math.round(H * R);
+        ctx.setTransform(R, 0, 0, R, 0, 0);
+        charPx = Math.max(BASE_CHAR, Math.sqrt((W * H) / (0.6 * MAX_CELLS)));
+        advW = charPx * 0.6;
         cols = Math.ceil(W / advW) + 1;
         rows = Math.ceil(H / charPx) + 1;
         scroll = new Array(cols).fill(0);
         colSpd = new Array(cols).fill(0).map((_, c) => 0.4 + hash(c, 7) * 1.1);
         ctx.font = charPx + "px ui-monospace, Menlo, Consolas, 'Courier New', monospace";
         ctx.textBaseline = "top";
-        // Reallocating the backing store above blanks the canvas. If the field is
-        // paused (e.g. while the page is scrolling and the URL bar is moving on
-        // mobile), the frame loop won't repaint, so paint one static frame here —
-        // otherwise the section flashes white until scrolling settles.
-        if (!running) render(performance.now(), 0);
+        return true;
       }
 
       // draw one frame; dt advances the upward drift (0 = static repaint)
       function render(now, dt) {
+        if (!cols) return;
         const t = now / 1000;
         ctx.clearRect(0, 0, W, H);
         ctx.fillStyle = color;
@@ -2978,6 +3072,11 @@
               * Math.sin(c * 0.18 + r * 0.12 + t * 0.8 * speed)
               * Math.cos(c * 0.07 - r * 0.15 + t * 0.5 * speed);
             const a = baseA + ampA * wv;
+            // NB this early-out never fires while baseAlpha is >= it (both fields
+            // sit at 0.05, so every cell always drew). Raising it above baseAlpha
+            // is the cheapest further win available here — at 0.07 it skips ~13%
+            // of cells — but it punches holes in the faintest part of the
+            // shimmer rather than just dimming it, so it's left at the tuned look.
             if (a < 0.02) continue;
             const gi = Math.floor(r + off);
             const ch = ramp[(hash(c * 1.7, gi * 1.3) * ramp.length) | 0];
@@ -2988,6 +3087,125 @@
         ctx.globalAlpha = 1;
       }
 
+      return { resize, render, ready: () => cols > 0 };
+    }
+
+    // The worker body. Owns every transferred canvas (keyed by id) and drives
+    // them from ONE loop, so three fields still cost one thread. rAF exists in
+    // workers in Chrome but isn't universal, so fall back to a timer — this is a
+    // 20fps shimmer, it gains nothing from vsync alignment.
+    function FIELD_WORKER() {
+      const fields = new Map();
+      const raf = (typeof self.requestAnimationFrame === "function")
+        ? self.requestAnimationFrame.bind(self)
+        : (cb) => setTimeout(() => cb(performance.now()), 16);
+      let looping = false;
+      function loop() {
+        if (looping) return;
+        looping = true;
+        const step = (now) => {
+          let any = false;
+          fields.forEach((f) => {
+            if (!f.running) return;
+            any = true;
+            const since = now - f.last;
+            if (since < f.frameMs) return;
+            const dt = Math.min(0.05, since / 1000 || 0);
+            f.last = now;
+            f.core.render(now, dt);
+          });
+          if (any) raf(step); else looping = false;   // idle out when all stopped
+        };
+        raf(step);
+      }
+      self.onmessage = (e) => {
+        const m = e.data, f = fields.get(m.id);
+        if (m.type === "init") {
+          fields.set(m.id, {
+            core: FIELD_CORE(m.canvas.getContext("2d"), m.opts),
+            frameMs: 1000 / (m.opts.fps || 30),
+            defer: !!m.opts.defer, running: false, last: 0,
+          });
+        } else if (!f) {
+          return;
+        } else if (m.type === "resize") {
+          // Reallocating the backing store blanks the canvas, so repaint one
+          // static frame — otherwise a paused field flashes empty. `defer`
+          // fields (the modal backdrops) have nothing to flash behind a closed
+          // modal, so they wait for start().
+          if (f.core.resize(m.w, m.h, m.dpr) && !f.running && !f.defer)
+            f.core.render(performance.now(), 0);
+        } else if (m.type === "start") {
+          if (f.running) return;
+          f.running = true; f.last = 0;   // 0 → repaint on the very next tick
+          loop();
+        } else if (m.type === "stop") {
+          f.running = false;
+        }
+      };
+    }
+
+    // One worker for all three fields, built from a Blob so the site stays a
+    // single self-contained file (no extra request, no separate .js to deploy).
+    // If anything here is unavailable — old browser, or a CSP that forbids
+    // blob: workers — `new Worker` throws and we quietly keep the main-thread
+    // path below. The check runs BEFORE any canvas is transferred, since a
+    // transferred canvas can never be reclaimed by the main thread.
+    const fieldWorker = (() => {
+      try {
+        if (typeof Worker !== "function" || typeof OffscreenCanvas === "undefined") return null;
+        if (!document.createElement("canvas").transferControlToOffscreen) return null;
+        const src = "const FIELD_CORE = " + FIELD_CORE.toString() + ";\n("
+          + FIELD_WORKER.toString() + ")();";
+        return new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+      } catch (_) { return null; }
+    })();
+    let fieldSeq = 0;
+
+    function asciiField(canvas, opts) {
+      const dprNow = () => Math.max(1, window.devicePixelRatio || 1);
+
+      // ── worker path: not a single glyph is drawn on the main thread ──
+      if (fieldWorker) {
+        try {
+          const id = ++fieldSeq;
+          const off = canvas.transferControlToOffscreen();
+          fieldWorker.postMessage({ type: "init", id, canvas: off, opts }, [off]);
+          // the worker can't read layout, so measurement stays here
+          const push = () => {
+            const w = canvas.clientWidth, h = canvas.clientHeight;
+            if (w && h) fieldWorker.postMessage({ type: "resize", id, w, h, dpr: dprNow() });
+          };
+          let running = false;
+          window.addEventListener("resize", push);
+          push();
+          return {
+            start() {
+              if (running) return;
+              running = true;
+              push();                                    // modal canvases size up on open
+              fieldWorker.postMessage({ type: "start", id });
+            },
+            stop() {
+              if (!running) return;
+              running = false;
+              fieldWorker.postMessage({ type: "stop", id });
+            },
+            resize: push,
+            isRunning: () => running,
+          };
+        } catch (_) { /* fall through — canvas wasn't transferred if this threw */ }
+      }
+
+      // ── fallback: same renderer, driven on the main thread ──
+      const core = FIELD_CORE(canvas.getContext("2d"), opts);
+      const FRAME_MS = 1000 / (opts.fps || 30);
+      let running = false, rafId = 0, lastDraw = 0;
+
+      function resize() {
+        if (!core.resize(canvas.clientWidth, canvas.clientHeight, dprNow())) return;
+        if (!running && !opts.defer) core.render(performance.now(), 0);
+      }
       function frame(now) {
         if (!running) return;
         rafId = requestAnimationFrame(frame);          // keep the loop alive at display rate…
@@ -2995,34 +3213,47 @@
         if (since < FRAME_MS) return;                  // …but only actually repaint ~30×/sec
         const dt = Math.min(0.05, since / 1000 || 0);
         lastDraw = now;
-        render(now, dt);
+        core.render(now, dt);
       }
-
       function start() {
         if (running) return;
-        if (!cols) resize();
+        if (!core.ready()) resize();
         running = true; lastDraw = 0;   // 0 → repaint on the very next frame
         rafId = requestAnimationFrame(frame);
       }
       function stop() { running = false; cancelAnimationFrame(rafId); }
 
-      window.addEventListener("resize", () => { resize(); });
+      window.addEventListener("resize", resize);
       resize();
       return { start, stop, resize, isRunning: () => running };
     }
 
-    // section backdrop — pumpkin on cream, mostly hidden behind the tiles
+    // Section backdrop — pumpkin on cream, and ~90% of it is behind the tiles.
+    // This was the most expensive thing on the whole page: at charPx 22 it's
+    // 5,292 cells a repaint, which on a 6x-throttled CPU pinned the section at
+    // 9fps all by itself. Cost here is linear in cell count and repaint rate,
+    // and those are the only two levers that move it (a glyph atlas and alpha
+    // batching were both measured and neither helped — see asciiField).
+    // Most of the win is the repaint rate, which costs nothing visually: 30 ->
+    // 20fps on a shimmer this slow is invisible. charPx 22 -> 26 takes off a
+    // further ~27% of the cells; that one IS a slightly coarser grain, so set it
+    // back to 22 to restore the original texture exactly (at ~+27% cost).
     const sectionField = asciiField(document.getElementById("projects-bg"), {
-      color: PUMPKIN, charPx: 22, baseAlpha: 0.05, ampAlpha: 0.11, speed: 1, flow: 1,
+      color: PUMPKIN, charPx: 26, baseAlpha: 0.05, ampAlpha: 0.11, speed: 1, flow: 1,
+      fps: 20,
     });
     // modal backdrop — slower and fainter on the dark scrim, so the eye
     // stays on the panel rather than the moving text behind it
+    // `defer` skips the static first paint these would otherwise do at page
+    // load, behind a closed modal, for nobody (see resize()).
     modalField = asciiField(document.getElementById("modal-bg"), {
       color: PUMPKIN_HOT, charPx: 20, baseAlpha: 0.05, ampAlpha: 0.13, speed: 0.6, flow: 0.6,
+      defer: true,
     });
     // same backdrop for the "which London?" modal
     londonField = asciiField(document.getElementById("london-bg"), {
       color: PUMPKIN_HOT, charPx: 20, baseAlpha: 0.05, ampAlpha: 0.13, speed: 0.6, flow: 0.6,
+      defer: true,
     });
 
     // run the section field only while it's on screen, the tab is active, the
@@ -3032,7 +3263,8 @@
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let onScreen = false;
     function syncField() {
-      if (onScreen && !document.hidden && !reduceMotion && !interacting && !scrolling) sectionField.start();
+      if (onScreen && !document.hidden && !reduceMotion && !interacting && !scrolling && !modalOpen)
+        sectionField.start();
       else sectionField.stop();
     }
     const io = new IntersectionObserver((entries) => {
@@ -3061,11 +3293,26 @@
     const MAX_GAP = 600;     // px past the edge (farthest — needs a fast flick)
     const footer = document.querySelector(".site-footer");
 
-    function place(eye, maxBottom) {
-      const vw = document.documentElement.clientWidth;
-      const vh = window.innerHeight;
-      const ew = eye.offsetWidth || 160;
-      const eh = eye.offsetHeight || 130;
+    // Every hop used to read the footer's rect plus each eye's box — a
+    // layout-forcing read/write cycle 15x a second, for the life of the page,
+    // even sitting at the top where no eye is anywhere near the viewport. None
+    // of those values change between layout changes, so measure once and refresh
+    // only when the page actually changes shape (resize / late-loading images).
+    let vw = 0, vh = 0, maxBottom = 0;
+    const dims = new Map();
+    function measure() {
+      vw = document.documentElement.clientWidth;
+      vh = window.innerHeight;
+      // footer bottom = the page's real content end; eyes can't push past it.
+      // (footer is in normal flow, so this is unaffected by the eyes themselves.)
+      maxBottom = footer
+        ? footer.getBoundingClientRect().bottom + window.scrollY
+        : document.documentElement.scrollHeight;
+      for (const eye of eyes) dims.set(eye, [eye.offsetWidth || 160, eye.offsetHeight || 130]);
+    }
+
+    function place(eye) {
+      const [ew, eh] = dims.get(eye);
       // random horizontal spot fully within the viewport width
       const x = Math.random() * Math.max(0, vw - ew);
       const gap = MIN_GAP + Math.random() * (MAX_GAP - MIN_GAP);
@@ -3085,15 +3332,15 @@
       eye.style.opacity = "1";
     }
 
-    const hop = () => {
-      // footer bottom = the page's real content end; eyes can't push past it.
-      // (footer is in normal flow, so this is unaffected by the eyes themselves.)
-      const maxBottom = footer
-        ? footer.getBoundingClientRect().bottom + window.scrollY
-        : document.documentElement.scrollHeight;
-      eyes.forEach((eye) => place(eye, maxBottom));
-    };
+    const hop = () => { for (const eye of eyes) place(eye); };
+    measure();
     hop();                          // seed positions before first paint reveal
+    // Re-measure only on real layout changes. The eyes are absolutely positioned
+    // inside a zero-height container, so they never feed back into body height —
+    // observing it can't loop.
+    window.addEventListener("resize", measure);
+    window.addEventListener("load", measure);   // late images settle the footer
+    if (window.ResizeObserver) new ResizeObserver(measure).observe(document.body);
 
     // Run the hop timer only while the tab is visible — backgrounded tabs gain
     // nothing from repositioning (and each hop forces a reflow via
