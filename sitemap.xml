@@ -1,48 +1,47 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- lastmod values track each file's last commit date from git log.
+     Refresh them when a page actually changes; a lastmod that never moves, or
+     one that lies, gets ignored by Google. priority/changefreq are omitted
+     on purpose: Google has stated it ignores both. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://evankoza.com/</loc>
-    <lastmod>2026-06-18</lastmod>
-    <priority>1.0</priority>
+    <lastmod>2026-07-27</lastmod>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/invoice-game.html</loc>
     <lastmod>2026-06-18</lastmod>
-    <priority>0.6</priority>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/make-your-own.html</loc>
     <lastmod>2026-06-18</lastmod>
-    <priority>0.6</priority>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/eternal-fm.html</loc>
     <lastmod>2026-06-18</lastmod>
-    <priority>0.6</priority>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/discord-bot-demo.html</loc>
     <lastmod>2026-06-18</lastmod>
-    <priority>0.6</priority>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/print.html</loc>
-    <lastmod>2026-07-08</lastmod>
-    <priority>0.6</priority>
+    <lastmod>2026-07-27</lastmod>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/sudoku.html</loc>
     <lastmod>2026-07-22</lastmod>
-    <priority>0.6</priority>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/gregg-tutor.html</loc>
     <lastmod>2026-07-22</lastmod>
-    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://evankoza.com/experiments/minesweeper.html</loc>
+    <lastmod>2026-07-21</lastmod>
   </url>
   <url>
     <loc>https://evankoza.com/experiments/lissajous-toy.html</loc>
     <lastmod>2026-06-18</lastmod>
-    <priority>0.5</priority>
   </url>
 </urlset>

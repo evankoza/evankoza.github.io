@@ -36,6 +36,13 @@
 <meta property="og:description" content="Computer Science & Data Science student at Western University and Software Developer at Digits Rehab. Portfolio, projects, and interactive experiments." />
 <meta property="og:url" content="https://evankoza.com/" />
 <meta property="og:image" content="https://evankoza.com/assets/thumbnail.png" />
+<!-- Declared dimensions let a scraper reserve the card before it fetches the
+     image, so the large-image preview doesn't collapse to a small one on first
+     share. Must match assets/thumbnail.png (1741×925) if that file is replaced. -->
+<meta property="og:image:width" content="1741" />
+<meta property="og:image:height" content="925" />
+<meta property="og:image:alt" content="Evan Koza — animated ASCII portrait over the KOZA wordmark" />
+<meta property="og:locale" content="en_CA" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Evan Koza, Software Developer & CS / Data Science Student" />
 <meta name="twitter:description" content="Computer Science & Data Science student at Western University and Software Developer at Digits Rehab." />
@@ -200,7 +207,7 @@
   }
   /* monochrome by default so the wall reads calm; the real brand colour
      blooms in on hover (mirrors the original muted → light-up treatment). */
-  /* anchor wraps each logo: it's the flex item, so the inter-logo spacing
+  /* a span wraps each logo: it's the flex item, so the inter-logo spacing
      lives here (moved off .logo) to keep the seamless loop maths intact. */
   .logo-link {
     display: block;
@@ -594,6 +601,28 @@
   }
   .site-footer a { color: var(--pumpkin); text-decoration: none; }
   .site-footer a:hover { text-decoration: underline; }
+  /* Crawlable index of the experiments. The projects wall is built from button
+     tiles whose demo URLs only exist as JS strings inside PROJECTS[], injected
+     into the modal on click — so a crawler never sees them and every demo page
+     was an orphan. This nav is the one place each page is reachable by a plain
+     anchor, with descriptive text. Keep it in sync with PROJECTS[] (and
+     sitemap.xml) when a new experiment ships. */
+  .footer-nav {
+    max-width: 780px;
+    margin: 0 auto 22px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .footer-nav .eyebrow { display: block; margin-bottom: 10px; }
+  .footer-nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 18px;
+  }
 
   @media (max-width: 760px) {
     .about-grid { grid-template-columns: 1fr; gap: 48px; }
@@ -1174,20 +1203,26 @@
     <a class="headshot-cta eyebrow" href="experiments/make-your-own.html"><span class="label">Make your own headshot</span><span class="arrow" aria-hidden="true">&rarr;</span></a>
     <span class="eyebrow">Trusted by the world&rsquo;s leading companies</span>
     <div class="marquee">
+      <!-- The logos are deliberately NOT links. Thirteen followed outbound links
+           from a personal site to Fortune-500 homepages, sitting under a
+           "trusted by" claim, is the exact shape Google's spam policy calls
+           irrelevant outbound linking — and clicking through to intel.com does
+           nothing for a visitor anyway. The spans keep the flex/spacing and the
+           hover colour bloom identical; only the href is gone. -->
       <div class="marquee-track" id="marquee-track">
-        <a class="logo-link" href="https://www.google.com"  target="_blank" rel="noopener"><img class="logo" src="assets/logos/google.svg"  alt="Google"  loading="lazy"></a>
-        <a class="logo-link" href="https://www.apple.com"   target="_blank" rel="noopener"><img class="logo" src="assets/logos/apple.svg"   alt="Apple"   loading="lazy"></a>
-        <a class="logo-link" href="https://www.meta.com"    target="_blank" rel="noopener"><img class="logo" src="assets/logos/meta.svg"    alt="Meta"    loading="lazy"></a>
-        <a class="logo-link" href="https://www.netflix.com" target="_blank" rel="noopener"><img class="logo" src="assets/logos/netflix.svg" alt="Netflix" loading="lazy"></a>
-        <a class="logo-link" href="https://www.nvidia.com"  target="_blank" rel="noopener"><img class="logo" src="assets/logos/nvidia.svg"  alt="NVIDIA"  loading="lazy"></a>
-        <a class="logo-link" href="https://www.tesla.com"   target="_blank" rel="noopener"><img class="logo" src="assets/logos/tesla.svg"   alt="Tesla"   loading="lazy"></a>
-        <a class="logo-link" href="https://www.spotify.com" target="_blank" rel="noopener"><img class="logo" src="assets/logos/spotify.svg" alt="Spotify" loading="lazy"></a>
-        <a class="logo-link" href="https://www.stripe.com"  target="_blank" rel="noopener"><img class="logo" src="assets/logos/stripe.svg"  alt="Stripe"  loading="lazy"></a>
-        <a class="logo-link" href="https://www.airbnb.com"  target="_blank" rel="noopener"><img class="logo" src="assets/logos/airbnb.svg"  alt="Airbnb"  loading="lazy"></a>
-        <a class="logo-link" href="https://www.uber.com"    target="_blank" rel="noopener"><img class="logo" src="assets/logos/uber.svg"    alt="Uber"    loading="lazy"></a>
-        <a class="logo-link" href="https://www.shopify.com" target="_blank" rel="noopener"><img class="logo" src="assets/logos/shopify.svg" alt="Shopify" loading="lazy"></a>
-        <a class="logo-link" href="https://www.paypal.com"  target="_blank" rel="noopener"><img class="logo" src="assets/logos/paypal.svg"  alt="PayPal"  loading="lazy"></a>
-        <a class="logo-link" href="https://www.intel.com"   target="_blank" rel="noopener"><img class="logo" src="assets/logos/intel.svg"   alt="Intel"   loading="lazy"></a>
+        <span class="logo-link"><img class="logo" src="assets/logos/google.svg"  alt="Google"  loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/apple.svg"   alt="Apple"   loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/meta.svg"    alt="Meta"    loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/netflix.svg" alt="Netflix" loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/nvidia.svg"  alt="NVIDIA"  loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/tesla.svg"   alt="Tesla"   loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/spotify.svg" alt="Spotify" loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/stripe.svg"  alt="Stripe"  loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/airbnb.svg"  alt="Airbnb"  loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/uber.svg"    alt="Uber"    loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/shopify.svg" alt="Shopify" loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/paypal.svg"  alt="PayPal"  loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/intel.svg"   alt="Intel"   loading="lazy"></span>
       </div>
     </div>
   </div><!-- /trust-bar -->
@@ -1457,6 +1492,20 @@
 
 
   <footer class="site-footer">
+    <nav class="footer-nav" aria-label="Experiments">
+      <span class="eyebrow"><span class="prompt">~ $</span> ls ./experiments</span>
+      <ul>
+        <li><a href="experiments/invoice-game.html">Invoice Rush</a></li>
+        <li><a href="experiments/make-your-own.html">Make Your Own Portrait</a></li>
+        <li><a href="experiments/print.html">Receipt Printer</a></li>
+        <li><a href="experiments/eternal-fm.html">Eternal FM</a></li>
+        <li><a href="experiments/discord-bot-demo.html">Play-Together Bot</a></li>
+        <li><a href="experiments/minesweeper.html">Infinite Minesweeper</a></li>
+        <li><a href="experiments/sudoku.html">Daily Sudoku</a></li>
+        <li><a href="experiments/gregg-tutor.html">Gregg Shorthand Tutor</a></li>
+        <li><a href="experiments/lissajous-toy.html">Lissajous Toy</a></li>
+      </ul>
+    </nav>
     &copy; Evan Koza &middot;
     <a href="mailto:evankoza@hotmail.com">evankoza@hotmail.com</a> &middot;
     <a href="https://x.com/koh_zuh" target="_blank" rel="noopener">X</a> &middot;
@@ -2885,7 +2934,8 @@
 
     // ── 3a. remember-where-you-were ───────────────────────────────────
     // Demos open in a new tab and carry a "← Portfolio" link back to
-    // index.html#return. When the visitor clicks a demo link we stash the
+    // /#return (host-relative, so it hits the canonical "/" in production and
+    // still works on localhost). When the visitor clicks a demo link we stash the
     // current scroll position (and which modal is open, if any) so the
     // return trip can drop them right back where they left off. A normal
     // visit (no #return) ignores the stash and starts at the top. We use a
