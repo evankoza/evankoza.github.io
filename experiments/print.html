@@ -202,10 +202,10 @@
   #paperGrip:hover { color: var(--pumpkin); border-color: var(--pumpkin); }
   #msg { min-height: 18px; font-size: 13px; color: var(--ink-muted); margin-top: 8px; }
   #msg.err { color: #c92a2a; } #msg.ok { color: #2f9e44; }
+  /* deliberately quiet: queueing is the normal path, not a problem to warn about */
   #offlineNote {
-    font-size: 13px; color: var(--pumpkin); background: rgba(201, 80, 0, .07);
-    border: 1px solid rgba(201, 80, 0, .30); border-radius: 8px;
-    padding: 10px 12px; margin-bottom: 12px;
+    font-size: 12px; color: var(--ink-faint); line-height: 1.45;
+    margin-bottom: 10px;
   }
 </style>
 </head>
@@ -318,8 +318,7 @@
 
     <section>
       <div id="offlineNote" hidden>
-        🧻 The printer is out right now. Any prints you send are saved in the
-        queue and will roll out of the printer the moment it's back in house.
+        🧻 Printer's out right now — send away, it'll roll out when it's back.
       </div>
       <button id="printBtn" class="primary">🖨 Print it</button>
       <div id="msg"></div>
@@ -328,6 +327,6 @@
 </main>
 
 <!-- bump ?v= whenever the relay URL in print.js changes, so browsers don't run a stale cached copy -->
-<script src="print.js?v=6"></script>
+<script src="print.js?v=7"></script>
 </body>
 </html>
