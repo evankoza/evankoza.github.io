@@ -70,6 +70,41 @@
 
 <!-- first head-spin frame is the LCP element — fetch it before the script runs -->
 <link rel="preload" as="image" href="assets/portrait/img0.jpeg" />
+
+<!-- Project covers, preloaded because nothing else can discover them in time.
+     They're CSS *mask* images assigned from JS (the `--cover` custom property in
+     makeTile), so they exist nowhere the HTML preload scanner can see: the browser
+     doesn't learn a single cover URL until the bottom-of-body script has parsed
+     and built the whole wall, ~600ms into the load even on localhost.
+     That delay is visible, and it's the projects section's first-load "pop in".
+     `.tile.raw::before` / `.pick-art::before` composite two mask layers with
+     `mask-composite: exclude` — the cover, and a plain opaque gradient. Until the
+     cover decodes, only the gradient contributes, so the mask is fully opaque and
+     every tile paints as a SOLID PUMPKIN SLAB; when the covers land, the whole
+     wall snaps to art at once. Fetching them up here means they're decoded long
+     before the visitor has scrolled the ~1200px down to the wall, so the slab
+     state is never on screen. All twelve together are ~46 KB.
+     `crossorigin` is REQUIRED and is not about CORS here — everything is
+     same-origin. A CSS mask/background image is fetched in same-origin
+     credentials mode, a bare `rel=preload as=image` in include mode, and Chrome
+     refuses to match the two: without it every cover downloads TWICE and the
+     preload buys nothing ("credentials mode does not match" in the console).
+     Keep this list in sync with the `cover` fields in PROJECTS (§0) and with
+     EYE_COVER; a missing entry just costs that one tile its head start.
+     eye.webp is the 1/50 easter-egg cover, so on the ~20% of loads where no tile
+     rolls an eye Chrome warns it went unused. That warning is expected. -->
+<link rel="preload" as="image" type="image/webp" href="assets/covers/invoice.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/discord.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/printer.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/data-analysis.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/eternal-fm.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/chessbot.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/lissajous.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/make-your-own.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/minesweeper.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/sudoku.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/gregg-tutor.webp" crossorigin />
+<link rel="preload" as="image" type="image/webp" href="assets/covers/eye.webp" crossorigin />
 <style>
   :root {
     /* cursor.com/compile-style warm neutral canvas */
@@ -345,6 +380,21 @@
     /* chunky pixels must stay crisp when the small field buffer is scaled up */
     image-rendering: pixelated;
     will-change: transform;
+  }
+  /* FLAT MODE — set by JS when the parallax layer would be too big to composite.
+     will-change (and an active transform animation) force the canvas into ONE
+     GPU-backed layer, and WebKit gives up on a texture past roughly 8192px a
+     side. The parallax oversize blows straight through that on a phone: a
+     3700px section becomes a 6600px layer, ~19,900 device px at dpr 3, and iOS
+     Safari rasterises only part of it — the field looks like it simply stops
+     partway down the section. Dropping the promotion (and the parallax with it,
+     since a transform animation would re-promote it) makes the canvas ordinary
+     page content, which the compositor tiles like any other tall element. The
+     JS sizes it to exactly the section height to match. */
+  .about-dither.flat {
+    will-change: auto;
+    animation: none !important;
+    transform: none !important;
   }
   /* Compositor-driven parallax. Where the browser supports scroll-driven
      animations, a CSS animation translates the dither layer in lockstep with
@@ -1395,20 +1445,26 @@
            irrelevant outbound linking — and clicking through to intel.com does
            nothing for a visitor anyway. The spans keep the flex/spacing and the
            hover colour bloom identical; only the href is gone. -->
+      <!-- NOT lazy. This row is inside .intro — it rests just above the fold (see
+           the comment on .trust-bar), so it is on screen at first paint. `loading
+           ="lazy"` defers the fetch until after layout instead of letting the
+           preload scanner start it during parse, which left the strip visibly
+           empty for ~500ms and then popped thirteen logos in at once. They're
+           SVGs, 36 KB for the set; there is nothing to save by deferring them. -->
       <div class="marquee-track" id="marquee-track">
-        <span class="logo-link"><img class="logo" src="assets/logos/google.svg"  alt="Google"  loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/apple.svg"   alt="Apple"   loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/meta.svg"    alt="Meta"    loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/netflix.svg" alt="Netflix" loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/nvidia.svg"  alt="NVIDIA"  loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/tesla.svg"   alt="Tesla"   loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/spotify.svg" alt="Spotify" loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/stripe.svg"  alt="Stripe"  loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/airbnb.svg"  alt="Airbnb"  loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/uber.svg"    alt="Uber"    loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/shopify.svg" alt="Shopify" loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/paypal.svg"  alt="PayPal"  loading="lazy"></span>
-        <span class="logo-link"><img class="logo" src="assets/logos/intel.svg"   alt="Intel"   loading="lazy"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/google.svg"  alt="Google"  decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/apple.svg"   alt="Apple"   decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/meta.svg"    alt="Meta"    decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/netflix.svg" alt="Netflix" decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/nvidia.svg"  alt="NVIDIA"  decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/tesla.svg"   alt="Tesla"   decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/spotify.svg" alt="Spotify" decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/stripe.svg"  alt="Stripe"  decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/airbnb.svg"  alt="Airbnb"  decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/uber.svg"    alt="Uber"    decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/shopify.svg" alt="Shopify" decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/paypal.svg"  alt="PayPal"  decoding="async"></span>
+        <span class="logo-link"><img class="logo" src="assets/logos/intel.svg"   alt="Intel"   decoding="async"></span>
       </div>
     </div>
   </div><!-- /trust-bar -->
@@ -2377,7 +2433,20 @@
                           //   behind the finger on weak devices).
       SPEED:       0.4,   // apparent scroll speed of the field: 1 = locked to the
                           //   page, 0 = pinned in the viewport (max depth). 0.4 =
-                          //   a calm, slow far-away layer.
+                          //   a calm, slow far-away layer. Forced to 1 (no
+                          //   parallax, no oversize) when the layer would exceed
+                          //   MAX_LAYER_PX — see the .about-dither.flat note.
+      // Device-px ceilings for the COMPOSITED parallax layer. A promoted layer
+      // is backed by a single GPU texture, and past the driver's limit it stops
+      // rasterising — which is what left the field covering only part of the
+      // section on iOS Safari. Parallax buys its depth cue with extra layer
+      // height ((1 - SPEED) × (section + viewport)), so the budget is what
+      // decides whether we can afford it at all. Two numbers because the
+      // ceilings genuinely differ: desktop GPUs take 16k and tile cleanly past
+      // it, while WebKit on phones/tablets is the one that truncates — and a
+      // coarse pointer is also where a subtle parallax is least missed.
+      MAX_LAYER_PX:       16384,
+      MAX_LAYER_PX_TOUCH: 8192,
       OPACITY:     0.55,  // overall layer opacity (medium — never fights the text).
       COBALT_AMT:  0.20,  // how much of the field tips into cobalt vs. orange (0–1).
       DENSITY:     1.05,  // pigment coverage multiplier; >1 fills more cells.
@@ -2411,7 +2480,12 @@
     // to driving the transform from JS, and so do environments that CLAIM
     // support but never actually run the animation (see verifyCssDriven).
     let cssDriven = !!(window.CSS && CSS.supports && CSS.supports('animation-timeline: scroll()'));
-    const tSlope = 1 - CONFIG.SPEED;            // px of layer travel per px scrolled
+    // Live parallax terms. `flat` means the layer would be too big to composite,
+    // so speed goes to 1: no travel, no oversize, no promotion. Both are decided
+    // in resize() because both depend on the measured section height.
+    let flat = false, speed = CONFIG.SPEED;
+    let tSlope = 1 - speed;                     // px of layer travel per px scrolled
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
     // Mobile URL bars collapse/expand DURING scroll and fire height-only resize
     // events; height wobble up to this many px is absorbed by bitmap headroom
     // instead of a rebuild (see the resize listener below).
@@ -2445,8 +2519,21 @@
       lastW = w; lastVH = vh;
       cell = cellPx();
       secH = about.clientHeight;
+      // Decide parallax-vs-flat FIRST — everything below depends on it. Parallax
+      // costs (1 - SPEED) × (section + viewport) of extra layer height on top of
+      // the section itself; if that promoted layer would exceed what the GPU will
+      // back (MAX_LAYER_PX device px), it renders partly blank, so take the flat
+      // path instead. Losing a subtle depth cue beats losing half the field.
+      const wantTravel = Math.ceil((1 - CONFIG.SPEED) * (secH + vh) / 2);
+      const budget = window.matchMedia('(pointer: coarse)').matches
+        ? CONFIG.MAX_LAYER_PX_TOUCH : CONFIG.MAX_LAYER_PX;
+      flat = (secH + 2 * wantTravel) * dpr > budget;
+      speed = flat ? 1 : CONFIG.SPEED;
+      tSlope = 1 - speed;
+      canvas.classList.toggle('flat', flat);
+      if (flat) canvas.style.transform = '';     // nothing must re-promote the layer
       // over a full scroll-through the layer shifts by (1 - SPEED) ×
-      // (section + viewport); each side travels half of that.
+      // (section + viewport); each side travels half of that. Flat = 0.
       const travel = Math.ceil(tSlope * (secH + vh) / 2);
       // Oversize the layer by the travel — so translating it never exposes an
       // edge — plus slack for the URL-bar height wobble we deliberately ignore.
@@ -2465,18 +2552,18 @@
       // forcing rect reads anywhere in the animation loop.
       secTopAbs = about.getBoundingClientRect().top + window.scrollY;
       tConst = tSlope * (secTopAbs + secH / 2 - vh / 2);
-      baseConst = pad + tConst - secTopAbs;     // band: base = baseConst + scrollY·SPEED
+      baseConst = pad + tConst - secTopAbs;     // band: base = baseConst + scrollY·speed
       // hand the travel to the compositor path as concrete-pixel keyframes
       kf.textContent = '@keyframes about-dither-parallax{from{transform:translateY(-'
         + travel + 'px)}to{transform:translateY(' + travel + 'px)}}';
-      if (!cssDriven) setTransform();           // JS fallback positions it now
+      if (!cssDriven && !flat) setTransform();  // JS fallback positions it now
     }
 
     // JS FALLBACK only (browsers without scroll-driven animations). Derived from
     // scrollY and refreshed in the rAF loop — not on the scroll event — which is
     // the best the main thread can do. Where CSS drives it, this is never called.
     function setTransform() {
-      if (reduce) return;                       // no scroll-driven motion
+      if (reduce || flat) return;               // no scroll-driven motion
       curT = tSlope * window.scrollY - tConst;
       canvas.style.transform = 'translateY(' + curT.toFixed(2) + 'px)';
     }
@@ -2584,7 +2671,7 @@
       const vh = window.innerHeight, margin = vh * 0.4;
       // local-y of the top visible row — a pure function of scroll that matches
       // the layer's current translate (whether driven by CSS or the JS fallback).
-      const base = baseConst + window.scrollY * CONFIG.SPEED;
+      const base = baseConst + window.scrollY * speed;
       const cy = Math.max(0, Math.floor((base - margin) / cell));
       const cyMax = Math.min(rows, Math.ceil((base + vh + margin) / cell));
       if (cyMax > cy) pass = { t: (now - start) / 1000 * CONFIG.FLOW * 20, cy, cyMax };
@@ -2622,7 +2709,11 @@
     function loop(now) {
       if (!running) return;
       raf = requestAnimationFrame(loop);
-      if (!cssDriven) setTransform();        // JS parallax fallback; CSS path is
+      // flat = no parallax at all, so there's nothing to drive OR to verify —
+      // and probing for the (deliberately disabled) animation would only end up
+      // writing style back onto the canvas we just took care not to promote.
+      if (flat) { /* layer is static */ }
+      else if (!cssDriven) setTransform();   // JS parallax fallback; CSS path is
                                              // handled on the compositor, no JS
       else if (cssCheck >= 0) verifyCssDriven();
       if (!pass && now - last >= minDelta) startPass(now);  // stays FPS-capped
@@ -2648,7 +2739,11 @@
     // → project mapping, and every field in the modal. There are more tiles
     // on the wall than real projects, so tiles just cycle through this list
     // (tile N shows PROJECTS[N % PROJECTS.length]). To add a project later:
-    // append one object here — no other code changes needed.
+    // append one object here — no other code changes needed to the wall itself.
+    // (Two things outside it do want the new entry: a `<link rel="preload">` for
+    // its `cover` in <head>, or that tile shows as a bare orange slab for the
+    // first second of a cold load; and, if the project adds an /experiments page,
+    // a .footer-nav anchor + a sitemap.xml <url> so it isn't a crawler orphan.)
     //   • `links`  — buttons in the modal, in order. The first is the primary
     //                (filled) button; the rest render as ghost buttons. A link
     //                can point anywhere: a local /experiments page, a GitHub
