@@ -3305,7 +3305,14 @@
         }));
       } catch (_) { /* private mode / quota — just skip restore */ }
     });
-    (function maybeRestore() {
+    // Defined here next to the stash it reads, but CALLED at the very bottom of
+    // this IIFE — openModal() ends in syncField(), which touches consts declared
+    // down in §5 (sectionField, reduceMotion, onScreen). Restoring inline here
+    // hit those in the temporal dead zone: the ReferenceError escaped and killed
+    // the rest of the IIFE, so the modal opened but its close button, scrim
+    // click-off, Escape key and backdrop field were never wired up. The stashing
+    // listener above is safe to register now; only the restore has to wait.
+    function maybeRestore() {
       if (location.hash !== "#return") return;
       // Strip the marker so a refresh or bookmark won't re-trigger a restore.
       history.replaceState(null, "", location.pathname + location.search);
@@ -3314,8 +3321,14 @@
       try { localStorage.removeItem(RETURN_KEY); } catch (_) {}
       if (!state) return;
       window.scrollTo({ top: state.scrollY || 0, behavior: "instant" });
-      if (state.project != null) openModal(state.project, true);
-    })();
+      // A stash written before the project list changed can name an index that
+      // no longer exists — reopen only a real one, and never let a bad restore
+      // take the page down with it.
+      const pi = state.project;
+      if (Number.isInteger(pi) && pi >= 0 && pi < PROJECTS.length) {
+        try { openModal(pi, true); } catch (err) { console.error(err); closeModal(); }
+      }
+    }
     masonry.addEventListener("click", (e) => {
       const tile = e.target.closest(".tile");
       if (tile) openModal(parseInt(tile.dataset.project, 10) || 0);
@@ -3676,6 +3689,10 @@
     }, { threshold: 0 });
     io.observe(document.getElementById("projects"));
     document.addEventListener("visibilitychange", syncField);
+
+    // Last thing in the IIFE: a return trip from a demo can reopen a modal, and
+    // that needs every listener and field above it to already exist (see §3a).
+    maybeRestore();
   })();
   </script>
 
