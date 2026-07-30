@@ -79,6 +79,7 @@
     --pumpkin-bright: #F2622E;
     --ink-muted: rgba(28, 27, 24, 0.58);
     --ink-faint: rgba(28, 27, 24, 0.40);
+    --ink-sub: rgba(28, 27, 24, 0.72);   /* sub-copy that sits over the character field */
     --line: rgba(28, 27, 24, 0.14);
     --paper: #F4F2EB;        /* card surface, a touch lighter than the canvas */
     --grid-line: rgba(28, 27, 24, 0.07);   /* faint parallax grid on the canvas */
@@ -375,7 +376,7 @@
     margin: 0 auto;
     background: var(--paper);
     border: 1px solid var(--about-frame-line);
-    border-radius: 14px;
+    border-radius: 0;        /* square — a sheet of paper, like the rest of the page */
     padding: clamp(28px, 4.5vw, 64px);
   }
   .about-frame > .eyebrow { display: block; margin-bottom: 14px; }
@@ -489,12 +490,14 @@
   }
 
   .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  /* square by default — every chip on the page is inside something square (a
+     pick card, a modal panel, the resume callout), so no scoped overrides */
   .chip {
     font-family: var(--mono);
     font-size: 11.5px;
     padding: 4px 10px;
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: 0;
     color: var(--ink-muted);
     background: var(--paper);
   }
@@ -564,8 +567,7 @@
     margin-top: 14px;
     background: var(--paper);
     border: 1px solid var(--line);
-    border-left: 3px solid var(--pumpkin);
-    border-radius: 10px;
+    border-radius: 0;
     padding: 16px 18px;
   }
   .project-t { font-size: 0.92rem; font-weight: 700; margin-bottom: 6px; }
@@ -696,6 +698,9 @@
      monospace character field — obscured by the tiles, glimpsed in the
      gaps and margins. */
   .projects {
+    /* inner padding of the two head cards — matches .pick-body's, so the head
+       copy and the pick-card copy share a left edge */
+    --head-pad: clamp(18px, 1.8vw, 22px);
     position: relative;
     overflow: hidden;
     padding: clamp(56px, 9vw, 120px) 0;
@@ -712,9 +717,12 @@
   }
   .projects-inner { position: relative; z-index: 1; }
   .projects-head {
+    position: relative;
     max-width: var(--maxw);
     margin: 0 auto clamp(22px, 3vw, 34px);
-    padding: 0 24px;
+    /* 24px section gutter + the card's own inner padding, so the head text
+       lines up with the body text inside the pick cards below */
+    padding: clamp(22px, 2.6vw, 30px) calc(24px + var(--head-pad));
   }
   .projects-head .eyebrow { display: block; margin-bottom: 12px; }
   .projects-h {
@@ -725,9 +733,171 @@
   }
   .projects-sub {
     margin-top: 12px;
-    color: var(--ink-muted);
+    color: var(--ink-sub);
     font-size: 1rem;
     max-width: 50ch;
+  }
+
+  /* The head sits directly on the flowing character field, and small grey type
+     over moving glyphs was genuinely hard to read. A per-glyph paper halo
+     (text-shadow in --bg) was tried first and is nearly invisible — the field is
+     only 5–16% alpha, so a halo has almost nothing to erase. So the head gets a
+     real paper card instead: the field stops dead behind the copy. The card is a
+     ::before rather than a background on the element so it can sit at
+     `inset: 0 24px` — edges flush with the pick cards and the wall tiles, while
+     the element keeps the section's 24px gutter.
+     Two smaller fixes stay: --ink-sub (~0.72 vs the sitewide 0.58) for the sub
+     copy, and the `~ $` prompt lifted out of --ink-faint. */
+  .projects-head::before {
+    content: "";
+    position: absolute;
+    inset: 0 24px;
+    z-index: -1;                        /* behind the copy, still above the canvas */
+    background: var(--paper);
+    border: 1px solid var(--line);
+  }
+  .projects-head .prompt { color: var(--ink-muted); }
+
+  /* ══ TOP PICKS ═══════════════════════════════════════════════
+     Three cards above the wall. Same projects, same modal — the strip
+     just says "start here" before the endless mosaic below, so the
+     work that shipped to real people isn't buried among the toys. The
+     art panels reuse the tiles' pumpkin knockout (see .tile.raw), so
+     the picks and the wall read as one material. */
+  .picks {
+    list-style: none;
+    max-width: var(--maxw);
+    margin: 0 auto clamp(38px, 4.6vw, 62px);
+    padding: 0 24px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: clamp(14px, 1.6vw, 22px);
+  }
+  .pick {
+    display: flex;
+    flex-direction: column;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 0;          /* sharp corners — square, same as the wall tiles */
+    overflow: hidden;
+    transition: transform .3s cubic-bezier(.2,.7,.2,1), box-shadow .3s ease,
+                border-color .3s ease;
+  }
+  .pick:hover {
+    transform: translateY(-4px);
+    border-color: rgba(201, 80, 0, .34);
+    box-shadow: 0 18px 40px rgba(201, 80, 0, .14);
+  }
+  /* the art panel is a button: clicking it opens the same modal a wall tile
+     opens, so the two entry points behave identically */
+  .pick-art {
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 5 / 4;
+    padding: 0;
+    border: none;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  /* knockout, same trick as .tile.raw: the panel fills with solid pumpkin and
+     the cover (an alpha mask) is SUBTRACTED, so the subject is a real hole onto
+     the paper behind it. `mask-origin: content-box` on the art layer only —
+     the gradient layer keeps border-box — is what gives the art its breathing
+     room without shrinking the orange field. */
+  .pick-art::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: clamp(16px, 2.4vw, 30px);
+    background: var(--pumpkin);
+    -webkit-mask: var(--cover) center / contain no-repeat content-box,
+                  linear-gradient(#000 0 0) border-box;
+    -webkit-mask-composite: xor;
+    mask: var(--cover) center / contain no-repeat content-box,
+          linear-gradient(#000 0 0) border-box;
+    mask-composite: exclude;
+    transition: background .3s ease;
+  }
+  .pick:hover .pick-art::before { background: var(--pumpkin-bright); }
+  .pick-art:focus-visible { outline: 2px solid var(--pumpkin); outline-offset: -3px; }
+  .pick-rank {
+    position: absolute;
+    top: 11px;
+    left: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    color: rgba(255, 255, 255, .92);
+  }
+  .pick-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: clamp(16px, 1.8vw, 22px);
+  }
+  .pick-t {
+    font-size: 1.12rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.12;
+    /* hold two lines even when the title only needs one, so the titles and
+       blurbs line up across the row (only "Receipt Printer: Print at My House"
+       wraps, and without this it shoves its whole card's text out of step) */
+    min-height: 2.24em;
+  }
+  .pick-why {
+    font-size: 0.92rem;
+    color: var(--ink-muted);
+    line-height: 1.6;
+  }
+  /* centred, unlike everything else in the card: these three are the "why this
+     one" points, so they read as a row of callouts rather than a metadata line.
+     `margin-top: auto` is HERE rather than on .pick-actions, so the slack in a
+     short card collects above the chips — the chips sit tight above the buttons
+     as one block at the card's foot, instead of hanging off the blurb. */
+  .pick-stack {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    padding: 2px 0;
+    margin-top: auto;
+  }
+  .pick-stack .chip { background: var(--bg); font-size: 11px; }
+  /* the auto margin that pins this block to the card's foot lives on .pick-stack
+     above, so the chips come down with it and the three action rows still line
+     up even when the blurbs run to different lengths */
+  .pick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+    padding-top: 6px;
+  }
+  .pick-actions .btn { font-size: 12px; padding: 10px 15px; border-radius: 0; }
+  .pick-actions button.btn { font-family: var(--mono); cursor: pointer; }
+
+  /* two-up, then a single stack — the art panel gets short and wide rather
+     than eating a phone screen. Three cards don't divide by two, so ONE runs
+     full width: it's #01, at the top, since the odd card out reads as the
+     emphasised one and that should be the first pick, not the last. */
+  @media (max-width: 980px) {
+    .picks { grid-template-columns: 1fr 1fr; }
+    .pick:first-child { grid-column: 1 / -1; }
+    .pick:first-child .pick-art { aspect-ratio: 16 / 6; }
+    /* the wide card sets its own measure, so only the two below need to line up */
+    .pick:first-child .pick-t { min-height: 0; }
+  }
+  @media (max-width: 620px) {
+    .picks { grid-template-columns: 1fr; }
+    .pick:first-child { grid-column: auto; }
+    .pick .pick-art, .pick:first-child .pick-art { aspect-ratio: 16 / 7; }
+    .pick-t { min-height: 0; }   /* nothing to line up in a single column */
   }
 
   /* the horizontal scroller (native scroll + JS drag/momentum + infinite
@@ -941,7 +1111,7 @@
     overflow-y: auto;
     background: var(--paper);
     border: 1px solid var(--line);
-    border-radius: 20px;
+    border-radius: 0;        /* square, same as the tiles and the picks strip */
     box-shadow: 0 40px 120px rgba(0,0,0,.55);
     padding: clamp(26px, 4vw, 46px);
     transform: translateY(16px) scale(.985);
@@ -955,7 +1125,7 @@
     position: absolute;
     top: 14px; right: 14px;
     width: 38px; height: 38px;
-    border-radius: 50%;
+    border-radius: 0;
     border: 1px solid var(--line);
     background: var(--bg);
     color: var(--ink);
@@ -965,6 +1135,10 @@
     transition: background .2s ease, color .2s ease, transform .2s ease;
   }
   .modal-close:hover { background: var(--pumpkin); color: #fff; transform: rotate(90deg); }
+
+  /* .btn is rounded everywhere else on the page; inside a modal panel it's
+     square, so the whole panel reads like the wall tiles */
+  .modal .btn { border-radius: 0; }
 
   .modal .eyebrow { display: block; margin-bottom: 14px; }
   .modal-title {
@@ -1037,12 +1211,11 @@
     width: 100%;
     aspect-ratio: 4 / 3;
     object-fit: cover;
-    border-radius: 12px;
+    border-radius: 0;
     border: 1px solid var(--line);
   }
   .modal-photos .photo {
     aspect-ratio: 4 / 3;
-    border-radius: 12px;
     background:
       repeating-linear-gradient(45deg, rgba(201,80,0,.10) 0 10px, rgba(201,80,0,.04) 10px 20px),
       var(--bg);
@@ -1097,7 +1270,7 @@
     width: 100%;
     height: 260px;
     border: 1px solid var(--line);
-    border-radius: 14px;
+    border-radius: 0;
     background: var(--bg);
     display: block;
     filter: saturate(.92);
@@ -1238,19 +1411,21 @@
 
 
   <!-- ══ PROJECTS ════════════════════════════════════════════
-       Blossom-style masonry carousel: a 3-row horizontal grid of
-       differently-sized placeholder tiles. Tiles + the flowing
-       character backdrop are wired up in the script below. -->
+       Three featured picks on top, then a Blossom-style masonry
+       carousel: a 4-row horizontal grid of differently-sized tiles.
+       Picks, tiles and the flowing character backdrop are all wired
+       up in the script below. -->
   <section class="projects" id="projects">
     <canvas class="projects-bg" id="projects-bg" aria-hidden="true"></canvas>
     <div class="projects-inner">
       <div class="projects-head">
-        <span class="eyebrow"><span class="prompt">~ $</span> ls ./projects</span>
+        <span class="eyebrow"><span class="prompt">~ $</span> ls ./projects | head -3</span>
         <h2 class="projects-h">Selected Work</h2>
         <p class="projects-sub">
-          A few things I&rsquo;ve built&hellip; drag through the wall and open any tile for the details.
+          Three I&rsquo;d start you on&hellip; then keep going, the whole wall is below.
         </p>
       </div>
+      <ol class="picks" id="picks"><!-- picks injected by JS --></ol>
       <div class="carousel" id="carousel">
         <div class="masonry" id="masonry"><!-- tiles injected by JS --></div>
       </div>
@@ -2435,6 +2610,10 @@
     //   • `coverRaw`— set true when the cover is ALREADY compile-style pumpkin-
     //                on-cream art: skips the duotone + dark scrim, flips the
     //                #num/label to dark ink. (discord, lissajous, data, headshot)
+    //   • `pick` / `pickPoints` — only on the projects listed in FEATURED below:
+    //                the short "why this one" blurb, and three chips naming what
+    //                the thing actually reaches (sold / self-hosted / talks to
+    //                hardware), NOT its languages.
     const PROJECTS = [
       {
         label: "Invoice Scanner",
@@ -2453,6 +2632,8 @@
         photos: [],
         cover: "assets/covers/invoice.webp",
         coverRaw: true,
+        pick: "The one that turned into an actual product. It’s been sold, and it runs a real receiving shift… scan the box and it reconciles itself against the invoice.",
+        pickPoints: ["Sold, in daily use", "PDF invoice parsing", "Zebra scanner over LAN"],
       },
       {
         label: "Discord Play-Together Bot",
@@ -2469,6 +2650,8 @@
         photos: [],
         cover: "assets/covers/discord.webp",
         coverRaw: true,
+        pick: "Discord’s bot API, Steam’s Web API, some scraping for what Steam won’t hand over, all running off my home server… to settle one argument: what can the five of us actually play tonight?",
+        pickPoints: ["Live Discord bot", "Steam API + scraping", "Self-hosted 24/7"],
       },
       {
         label: "Data Analysis",
@@ -2528,6 +2711,8 @@
         photos: [],
         cover: "assets/covers/printer.webp",
         coverRaw: true,
+        pick: "Design something in your browser and it comes out on paper, on a thermal printer sitting in my house. Browser to my server to an ESP32 to a real paper roll.",
+        pickPoints: ["Prints on real paper", "WebSocket to ESP32", "Client-side dithering"],
       },
       {
         label: "Lissajous Toy",
@@ -2604,6 +2789,21 @@
         cover: "assets/covers/gregg-tutor.webp",
         coverRaw: true,
       },
+    ];
+
+    // ── 0b. the top three ─────────────────────────────────────────────
+    // The wall treats every project the same, which buries the ones that
+    // actually left my machine. These three get a card above it. Listed by
+    // `label` (not index) so reordering PROJECTS can't silently re-rank them;
+    // an unknown label is skipped rather than throwing. Each one needs a
+    // `pick` blurb + `pickPoints` on its PROJECTS entry — that's the only edit a
+    // swap takes (no pickPoints just falls back to the stack chips).
+    // They stay in the wall below too; this is emphasis, not a
+    // separate collection.
+    const FEATURED = [
+      "Invoice Scanner",
+      "Discord Play-Together Bot",
+      "Receipt Printer",
     ];
 
     // ── 1. build the placeholder tiles ────────────────────────────────
@@ -2698,6 +2898,92 @@
         masonry.appendChild(tile);
       });
     }
+
+    // ── 1b. build the top-picks cards ─────────────────────────────────
+    // Same data, same modal as a wall tile — the card just surfaces the blurb
+    // and the demo link up front instead of making you find the tile first.
+    // The art panel reuses the tiles' knockout, so the cover is a CSS var, not
+    // an <img> (see .pick-art::before). The primary link is a real <a> rather
+    // than another modal button, so a pick is one click from the demo — but
+    // it's injected here, so the footer-nav anchors are still what a JS-less
+    // crawler follows (see the link-graph note by .footer-nav).
+    const picksEl = document.getElementById("picks");
+    FEATURED.forEach((label, rank) => {
+      const pi = PROJECTS.findIndex((p) => p.label === label);
+      if (pi < 0) return;                       // renamed/removed → skip quietly
+      const proj = PROJECTS[pi];
+
+      const li = document.createElement("li");
+      li.className = "pick";
+
+      const art = document.createElement("button");
+      art.type = "button";
+      art.className = "pick-art";
+      art.dataset.project = String(pi);
+      art.setAttribute("aria-label", "Open project: " + proj.title);
+      if (proj.cover) art.style.setProperty("--cover", 'url("' + proj.cover + '")');
+      const rankEl = document.createElement("span");
+      rankEl.className = "pick-rank";
+      rankEl.textContent = String(rank + 1).padStart(2, "0");
+      art.appendChild(rankEl);
+
+      const body = document.createElement("div");
+      body.className = "pick-body";
+
+      const h = document.createElement("h3");
+      h.className = "pick-t";
+      h.textContent = proj.title;
+      body.appendChild(h);
+
+      const why = document.createElement("p");
+      why.className = "pick-why";
+      why.textContent = proj.pick || proj.lead;
+      body.appendChild(why);
+
+      // `pickPoints` (reach: what it does and who it reaches), NOT the stack —
+      // the languages are the least interesting thing about these three and the
+      // modal lists the full stack anyway. Falls back to the stack so a project
+      // swapped into FEATURED without pickPoints still renders three chips.
+      const stack = document.createElement("ul");
+      stack.className = "pick-stack";
+      (proj.pickPoints || proj.stack).slice(0, 3).forEach((t) => {
+        const c = document.createElement("li");
+        c.className = "chip";
+        c.textContent = t;
+        stack.appendChild(c);
+      });
+      body.appendChild(stack);
+
+      const actions = document.createElement("div");
+      actions.className = "pick-actions";
+      const primary = (proj.links || [])[0];
+      if (primary) {
+        const a = document.createElement("a");
+        const external = !/^experiments\//.test(primary.href);
+        a.className = "btn primary";
+        a.href = primary.href;
+        if (external) { a.target = "_blank"; a.rel = "noopener"; }
+        a.innerHTML = primary.label +
+          ' <span class="arrow" aria-hidden="true">' + (external ? "&#8599;" : "&rarr;") + "</span>";
+        actions.appendChild(a);
+      }
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "btn ghost";
+      more.dataset.project = String(pi);
+      more.innerHTML = 'Details <span class="arrow" aria-hidden="true">&rarr;</span>';
+      actions.appendChild(more);
+      body.appendChild(actions);
+
+      li.appendChild(art);
+      li.appendChild(body);
+      picksEl.appendChild(li);
+    });
+    // one delegated handler for both the art panel and the "Details" button
+    picksEl.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-project]");
+      if (btn) openModal(parseInt(btn.dataset.project, 10) || 0);
+    });
 
     // ── 2. drag + momentum + seamless infinite wrap ───────────────────
     const car = document.getElementById("carousel");
@@ -2813,6 +3099,75 @@
       if (setW > 0) car.scrollLeft = setW;
       else if (tries < 30) requestAnimationFrame(() => initLoop(tries + 1));
     })(0);
+
+    // ── 2a. first-view fling ──────────────────────────────────────────
+    // The wall reads as a static mosaic until something moves, and the only
+    // other affordance is `cursor: grab` on hover — which a touch visitor never
+    // sees. So the first time it scrolls into view the wall flings ITSELF: a
+    // hard throw to the left that coasts to a stop, several tiles going past.
+    // It does NOT come back — this is an endless loop with no "start", so
+    // wherever it settles is as valid as where it began, and a return trip read
+    // as a twitch rather than a carousel.
+    // Once per load; skipped under prefers-reduced-motion; and abandoned the
+    // moment the visitor touches it, because a hint must never fight real input.
+    (function firstViewFling() {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const FRICTION = 0.94;      // identical to the drag-release glide in endDrag()
+      let cancelled = false, raf = 0;
+
+      // Only DIRECT manipulation cancels. A plain vertical wheel does NOT: the
+      // visitor scrolling the page down with the cursor over the wall is the
+      // common case, and cancelling on that would kill the fling nearly every
+      // time (a vertical wheel falls through to the page here — see .carousel).
+      const stop = () => {
+        cancelled = true; off(); cancelAnimationFrame(raf);
+        if (interacting) { interacting = false; syncField(); }
+      };
+      const onWheel = (e) => { if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) stop(); };
+      function on()  { car.addEventListener("pointerdown", stop); car.addEventListener("touchstart", stop, { passive: true }); car.addEventListener("wheel", onWheel, { passive: true }); }
+      function off() { car.removeEventListener("pointerdown", stop); car.removeEventListener("touchstart", stop); car.removeEventListener("wheel", onWheel); }
+
+      function run() {
+        // already grabbing when the wall came into view → they don't need the hint
+        if (startX !== undefined || dragging) { off(); return; }
+        // Distance a fling covers is v0/(1-friction), so solve for the throw:
+        // most of a screen of tiles, clamped so neither a phone nor an ultrawide
+        // gets a silly one. Deliberately a hard throw — a timid one reads as a
+        // glitch rather than "this thing moves".
+        const dist = Math.max(380, Math.min(900, car.clientWidth * 0.8));
+        let v = dist * (1 - FRICTION);        // px per frame, decaying
+        // same main-thread hand-off a real drag gets: pause the character field
+        // for the duration so the fling has the frame to itself
+        interacting = true; syncField();
+        const glide = () => {
+          if (cancelled) return;
+          if (v < 0.3) { interacting = false; syncField(); off(); return; }   // settled
+          car.scrollLeft += v;
+          wrap();
+          v *= FRICTION;
+          raf = requestAnimationFrame(glide);
+        };
+        raf = requestAnimationFrame(glide);
+      }
+
+      // armed from page load, not from run(): a visitor who grabs the wall before
+      // the fling is due has already worked out that it moves
+      on();
+
+      let tries = 0;
+      const io = new IntersectionObserver((entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        // don't race initLoop's park onto the second copy, or the fling would
+        // start from a position that's about to be overwritten
+        (function whenParked() {
+          if (cancelled) return;
+          if (setW > 0 || tries++ > 30) run();
+          else requestAnimationFrame(whenParked);
+        })();
+      }, { threshold: 0.25 });
+      io.observe(car);
+    })();
 
     // ── 3. modal ──────────────────────────────────────────────────────
     const root = document.getElementById("modal-root");
