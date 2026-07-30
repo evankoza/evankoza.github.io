@@ -316,7 +316,13 @@
      parallaxes on scroll, just like the grid it replaced. */
   .about {
     position: relative;
-    padding: clamp(64px, 10vw, 128px) clamp(20px, 5vw, 72px);
+    /* The side padding IS the dither's viewport — it's the only place the field
+       shows. The old 20px floor left a phone with ~2 cells of grain per side,
+       which reads as glitchy noise rather than smoke; 34px gives it a ribbon
+       with enough cells to see the wisps (the JS also fines the grain down to
+       match — see the CELL note in the dither script). The frame gives the
+       width back out of its own padding, so the text measure barely moves. */
+    padding: clamp(64px, 10vw, 128px) clamp(34px, 5vw, 72px);
   }
   /* static window onto the section: clips the oversized dither layer to the
      section box and fades it at the top/bottom edges. Because the mask lives on
@@ -377,7 +383,9 @@
     background: var(--paper);
     border: 1px solid var(--about-frame-line);
     border-radius: 0;        /* square — a sheet of paper, like the rest of the page */
-    padding: clamp(28px, 4.5vw, 64px);
+    /* 20px floor (was 28) hands most of the width back that .about took for the
+       dither ribbon, so the phone text measure only loses ~12px overall */
+    padding: clamp(20px, 4.5vw, 64px);
   }
   .about-frame > .eyebrow { display: block; margin-bottom: 14px; }
   .about-grid {
@@ -932,6 +940,12 @@
     grid-auto-columns: clamp(188px, 20vw, 240px);
     gap: clamp(12px, 1.4vw, 18px);
     height: clamp(520px, 72vh, 760px);
+    /* svh, like .intro: the wall is the one thing below the fold whose height
+       was tied to the viewport, so on any engine that reflows vh as the mobile
+       URL bar slides, it grew ~72px mid-scroll and shoved everything under it
+       (about, footer) down with it. svh is static, so the page height no longer
+       depends on where the URL bar happens to be. */
+    height: clamp(520px, 72svh, 760px);
     width: max-content;
   }
 
@@ -1837,8 +1851,21 @@
       };
     });
 
+    // A mobile URL bar sliding in/out fires `resize` with a new innerHeight but
+    // an UNCHANGED layout — .intro is sized in svh, which is static — so nothing
+    // below actually needs redoing. Every value in resize() is a pure function of
+    // the hero width and the cell boxes (composeScale/glyphScale/groupHold all
+    // route through widthRatio), so comparing those three is exact, not a
+    // heuristic: if they match, the rebuild would be byte-identical. Skipping it
+    // keeps a full canvas realloc + portrait re-render out of the scroll, which
+    // is what made the whole page jerk when the bar moved. A real resize (window
+    // drag, rotation) still changes them and falls through as before.
+    let lastHeroW = -1, lastCellW = -1, lastCellH = -1;
     function resize() {
       measureHero();          // the one place the hero width is read (see widthRatio)
+      const c0 = state[0].cell, cw = c0.offsetWidth, ch = c0.offsetHeight;
+      if (heroW === lastHeroW && cw === lastCellW && ch === lastCellH) return;
+      lastHeroW = heroW; lastCellW = cw; lastCellH = ch;
       for (const s of state) {
         // offsetWidth/Height = layout size, unaffected by the .curves transform,
         // so the EVAN scale (e·scl) never feeds back into the render resolution
@@ -2322,12 +2349,20 @@
   (() => {
     const canvas = document.querySelector('.about-dither');
     const about  = document.querySelector('.about');
+    const frame  = document.querySelector('.about-frame');
     if (!canvas || !about) return;
     const ctx = canvas.getContext('2d');
 
     // ── the ONE place to tune the effect ───────────────────────────────
     const CONFIG = {
-      CELL:        9,     // px per dither cell (chunky). Smaller = finer grain.
+      CELL:        9,     // px per dither cell (chunky) at full size. Smaller =
+                          //   finer grain. This is the DESKTOP value and the cap;
+                          //   see cellPx() for how it eases down on phones.
+      CELL_MIN:    5,     // never finer than this — below it the ordered dither
+                          //   stops reading as a pixel grid and just looks soft.
+      CELL_PER:    6,     // target cells across the visible margin. The field only
+                          //   shows in .about's side padding, so the margin — not
+                          //   the screen — is what the grain has to be legible in.
       SCALE:       0.03,  // feature size: lower = bigger, more stretched-out clouds.
       WARP:        5.7,   // domain-warp strength — how hard the field is smeared into
                           //   flowing smoke wisps. 0 = plain (blobby) fractal noise.
@@ -2387,22 +2422,40 @@
     document.head.appendChild(kf);
     let cols = 0, rows = 0, img = null, pad = 0, secH = 0, curT = 0, tConst = 0, secTopAbs = 0, baseConst = 0;
     let lastW = 0, lastVH = 0, pass = null, last = 0;
+    // live cell size — CONFIG.CELL on anything desktop-ish, finer on a phone.
+    let cell = CONFIG.CELL;
+
+    // The dither is only ever seen in the gap between the section edge and the
+    // resume frame, so THAT gap — not the viewport — decides whether the grain
+    // reads. Desktop leaves ~64px there and 9px cells look great; a phone leaves
+    // ~34px, where 9px cells give you three and a half of them and the field
+    // degenerates into a column of random squares. Sizing the cell so the margin
+    // always holds about CELL_PER of them keeps the texture looking the same at
+    // every width, and clamping to CONFIG.CELL means the desktop tuning (and its
+    // measured cost) is untouched — this only ever makes phones finer.
+    function cellPx() {
+      if (!frame) return CONFIG.CELL;
+      const margin = (about.clientWidth - frame.clientWidth) / 2;
+      if (!(margin > 0)) return CONFIG.CELL;
+      return Math.min(CONFIG.CELL, Math.max(CONFIG.CELL_MIN, Math.round(margin / CONFIG.CELL_PER)));
+    }
 
     function resize() {
       const w = about.clientWidth, vh = window.innerHeight;
       lastW = w; lastVH = vh;
+      cell = cellPx();
       secH = about.clientHeight;
       // over a full scroll-through the layer shifts by (1 - SPEED) ×
       // (section + viewport); each side travels half of that.
       const travel = Math.ceil(tSlope * (secH + vh) / 2);
       // Oversize the layer by the travel — so translating it never exposes an
       // edge — plus slack for the URL-bar height wobble we deliberately ignore.
-      pad = travel + Math.ceil(tSlope * VH_SLACK) + CONFIG.CELL;
+      pad = travel + Math.ceil(tSlope * VH_SLACK) + cell;
       const h = secH + pad * 2;
       canvas.style.top = -pad + 'px';
       canvas.style.height = h + 'px';
-      cols = Math.max(1, Math.ceil(w / CONFIG.CELL));
-      rows = Math.max(1, Math.ceil(h / CONFIG.CELL));
+      cols = Math.max(1, Math.ceil(w / cell));
+      rows = Math.max(1, Math.ceil(h / cell));
       // render into a tiny cols×rows buffer, then let CSS scale it up crisply
       canvas.width = cols; canvas.height = rows;
       img = ctx.createImageData(cols, rows);
@@ -2532,8 +2585,8 @@
       // local-y of the top visible row — a pure function of scroll that matches
       // the layer's current translate (whether driven by CSS or the JS fallback).
       const base = baseConst + window.scrollY * CONFIG.SPEED;
-      const cy = Math.max(0, Math.floor((base - margin) / CONFIG.CELL));
-      const cyMax = Math.min(rows, Math.ceil((base + vh + margin) / CONFIG.CELL));
+      const cy = Math.max(0, Math.floor((base - margin) / cell));
+      const cyMax = Math.min(rows, Math.ceil((base + vh + margin) / cell));
       if (cyMax > cy) pass = { t: (now - start) / 1000 * CONFIG.FLOW * 20, cy, cyMax };
     }
     // Paint as many rows as fit in BUDGET ms, then yield the frame. Fast
