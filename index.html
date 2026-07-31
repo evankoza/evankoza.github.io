@@ -294,6 +294,11 @@
   .decide-section {
     padding: clamp(40px, 7vw, 80px) 24px clamp(48px, 8vw, 96px);
     text-align: center;
+    /* The about section's dither bleeds UP into this one (--about-bleed), and
+       being later in the document it would otherwise paint over this text.
+       Positioning the divider lifts it back in front of the field. */
+    position: relative;
+    z-index: 1;
   }
   .decide-section .eyebrow { display: block; margin-bottom: 14px; }
   .decide {
@@ -359,31 +364,45 @@
        match — see the CELL note in the dither script). The frame gives the
        width back out of its own padding, so the text measure barely moves. */
     padding: clamp(64px, 10vw, 128px) clamp(34px, 5vw, 72px);
+    /* How far the field runs ABOVE the section — see .about-dither-wrap. The
+       dither script reads this off the computed style, so the canvas geometry
+       and the parallax follow whatever it's set to; 0 keeps the field inside
+       the section exactly as it always was. */
+    --about-bleed: 0px;
   }
   /* static window onto the section: clips the oversized dither layer to the
-     section box and fades it at the top/bottom edges. Because the mask lives on
-     this (non-moving) element, the fade always tracks the section — not the
-     canvas, which slides for parallax. */
+     section box (plus --about-bleed above it) and fades it at the top/bottom
+     edges. Because the mask lives on this (non-moving) element, the fade always
+     tracks the section — not the canvas, which slides for parallax. */
   .about-dither-wrap {
     position: absolute; inset: 0;
+    top: calc(-1 * var(--about-bleed));
     overflow: hidden;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
     mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
     z-index: 0;
     pointer-events: none;
   }
-  /* Below the stacking breakpoint the two columns become one and the section
-     grows from ~2300px to ~3700px — so the SAME 14% fade stops being a soft
-     edge and becomes ~515px of bare cream at each end, most of a phone screen
-     of nothing before the field starts (it only got going around the "CS &
-     Data Science" line). The fade never needed to scale with the section; it
-     just has to be long enough not to read as a cut. So on phones it's a fixed
-     distance, which puts the field at full strength by the eyebrow and hands
-     ~800px of covered height back. */
+  /* On a phone the section stacks to one column and grows to ~3700px, so the
+     14% fade becomes ~515px — the field didn't reach full strength until below
+     the "CS & Data Science" line, and the whole band above the resume card read
+     as empty. Shortening the fade alone can't fix that: the wrap is clipped to
+     the section, so the earliest the field can possibly start is the section's
+     own top edge, and there's another ~112px of dead space above that (the
+     decide divider's bottom padding plus this section's top padding).
+     So the field BLEEDS up out of the section instead. It starts at the divider
+     rule and ramps over exactly --about-bleed, which puts it at full strength
+     right as the resume card begins — off-white flowing into the pattern as you
+     arrive, rather than switching on a third of the way down. Desktop needs
+     none of this: its section is short enough that the 14% fade already starts
+     just under the divider, which is the look this is reproducing.
+     The two numbers are one number — the mask's first stop has to equal the
+     bleed, or the fade finishes somewhere other than the section's top edge. */
   @media (max-width: 760px) {
+    .about { --about-bleed: 140px; }
     .about-dither-wrap {
-      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 120px, #000 calc(100% - 120px), transparent 100%);
-      mask-image: linear-gradient(to bottom, transparent 0, #000 120px, #000 calc(100% - 120px), transparent 100%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 140px, #000 calc(100% - 120px), transparent 100%);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 140px, #000 calc(100% - 120px), transparent 100%);
     }
   }
   /* the dither bitmap itself. It's taller than the section (JS sets top/height)
@@ -2551,7 +2570,7 @@
     // values on every rebuild — see the note above @supports in <style>.
     const kf = document.createElement('style');
     document.head.appendChild(kf);
-    let cols = 0, rows = 0, img = null, pad = 0, secH = 0, curT = 0, tConst = 0, secTopAbs = 0, baseConst = 0;
+    let cols = 0, rows = 0, img = null, pad = 0, curT = 0, tConst = 0, secTopAbs = 0, baseConst = 0;
     let lastW = 0, lastVH = 0, pass = null, last = 0;
     // live cell size — CONFIG.CELL on anything desktop-ish, finer on a phone.
     let cell = CONFIG.CELL;
@@ -2575,27 +2594,33 @@
       const w = about.clientWidth, vh = window.innerHeight;
       lastW = w; lastVH = vh;
       cell = cellPx();
-      secH = about.clientHeight;
+      // The FIELD is the section plus whatever it bleeds up above it (the wrap
+      // is pulled up by the same --about-bleed in CSS, so this keeps the canvas
+      // and the window on it the same box). Every measurement below is the
+      // field's, not the section's — the section only anchors where it starts.
+      const secH = about.clientHeight;
+      const bleed = Math.max(0, parseFloat(getComputedStyle(about).getPropertyValue('--about-bleed')) || 0);
+      const fieldH = secH + bleed;
       // Decide parallax-vs-flat FIRST — everything below depends on it. Parallax
-      // costs (1 - SPEED) × (section + viewport) of extra layer height on top of
-      // the section itself; if that promoted layer would exceed what the GPU will
+      // costs (1 - SPEED) × (field + viewport) of extra layer height on top of
+      // the field itself; if that promoted layer would exceed what the GPU will
       // back (MAX_LAYER_PX device px), it renders partly blank, so take the flat
       // path instead. Losing a subtle depth cue beats losing half the field.
-      const wantTravel = Math.ceil((1 - CONFIG.SPEED) * (secH + vh) / 2);
+      const wantTravel = Math.ceil((1 - CONFIG.SPEED) * (fieldH + vh) / 2);
       const budget = window.matchMedia('(pointer: coarse)').matches
         ? CONFIG.MAX_LAYER_PX_TOUCH : CONFIG.MAX_LAYER_PX;
-      flat = (secH + 2 * wantTravel) * dpr > budget;
+      flat = (fieldH + 2 * wantTravel) * dpr > budget;
       speed = flat ? 1 : CONFIG.SPEED;
       tSlope = 1 - speed;
       canvas.classList.toggle('flat', flat);
       if (flat) canvas.style.transform = '';     // nothing must re-promote the layer
       // over a full scroll-through the layer shifts by (1 - SPEED) ×
-      // (section + viewport); each side travels half of that. Flat = 0.
-      const travel = Math.ceil(tSlope * (secH + vh) / 2);
+      // (field + viewport); each side travels half of that. Flat = 0.
+      const travel = Math.ceil(tSlope * (fieldH + vh) / 2);
       // Oversize the layer by the travel — so translating it never exposes an
       // edge — plus slack for the URL-bar height wobble we deliberately ignore.
       pad = travel + Math.ceil(tSlope * VH_SLACK) + cell;
-      const h = secH + pad * 2;
+      const h = fieldH + pad * 2;
       canvas.style.top = -pad + 'px';
       canvas.style.height = h + 'px';
       cols = Math.max(1, Math.ceil(w / cell));
@@ -2604,11 +2629,12 @@
       canvas.width = cols; canvas.height = rows;
       img = ctx.createImageData(cols, rows);
       pass = null; last = 0;                    // buffer is fresh — repaint asap
-      // document-absolute top of the section. With it, the transform and the
-      // visible-band math are pure functions of window.scrollY — no layout-
-      // forcing rect reads anywhere in the animation loop.
-      secTopAbs = about.getBoundingClientRect().top + window.scrollY;
-      tConst = tSlope * (secTopAbs + secH / 2 - vh / 2);
+      // document-absolute top of the FIELD (the section's top, less the bleed).
+      // With it, the transform and the visible-band math are pure functions of
+      // window.scrollY — no layout-forcing rect reads anywhere in the animation
+      // loop.
+      secTopAbs = about.getBoundingClientRect().top + window.scrollY - bleed;
+      tConst = tSlope * (secTopAbs + fieldH / 2 - vh / 2);
       baseConst = pad + tConst - secTopAbs;     // band: base = baseConst + scrollY·speed
       // hand the travel to the compositor path as concrete-pixel keyframes
       kf.textContent = '@keyframes about-dither-parallax{from{transform:translateY(-'
@@ -2780,7 +2806,10 @@
       const on = entries[0].isIntersecting;
       if (on && !running) { running = true; last = 0; raf = requestAnimationFrame(loop); }
       else if (!on && running) { running = false; cancelAnimationFrame(raf); }
-    }, { rootMargin: '200px 0px' }).observe(about);
+      // 400px because the field now starts up to --about-bleed ABOVE the section
+      // it's observing — the margin has to clear that or the top of the bleed
+      // scrolls into view before the paint loop has started.
+    }, { rootMargin: '400px 0px' }).observe(about);
   })();
   </script>
 
