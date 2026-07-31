@@ -1323,7 +1323,13 @@
   .modal-sections {
     display: grid;
     gap: 26px;
-    margin-top: 4px;
+    /* Breathing room under the action buttons. It lives HERE rather than as a
+       margin-bottom on .modal-actions because the photo strip sits between the
+       two and is display:none on every project that has no screenshots — so a
+       margin on the buttons would land inconsistently. When a project DOES have
+       photos, that strip's 26px bottom margin is adjoining this one and they
+       collapse to 30px, so the gap reads the same either way. */
+    margin-top: 30px;
   }
   .modal-sections h4 {
     font-family: var(--mono);
