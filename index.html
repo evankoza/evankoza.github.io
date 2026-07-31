@@ -390,20 +390,25 @@
      the section, so the earliest the field can possibly start is the section's
      own top edge, and there's another ~112px of dead space above that (the
      decide divider's bottom padding plus this section's top padding).
-     So the field BLEEDS up out of the section instead. It starts in the gap
-     below the divider rule and ramps over exactly --about-bleed, which puts it
-     at full strength right as the resume card begins — off-white flowing into
+     So the field BLEEDS up out of the section instead — off-white flowing into
      the pattern as you arrive, rather than switching on a third of the way
      down. Desktop needs none of this: its section is short enough that the 14%
      fade already starts just under the divider, which is the look this is
      reproducing.
-     90px, not the 140 first tried: 140 began ~90px above the divider rule and
-     read as too high. At 90 it begins ~40px above it, so the ramp is still
-     nearly transparent as it passes the rule and only gathers below it.
-     The two numbers are one number — the mask's first stop has to equal the
-     bleed, or the fade finishes somewhere other than the section's top edge. */
+     TWO numbers, and they do different jobs:
+       --about-bleed  where the field STARTS, measured up from the section's
+                      top edge. 30px puts it just below the divider rule (the
+                      rule sits ~49px above the section). 140 and 90 were both
+                      tried and both read as reaching too high.
+       mask stop      where it reaches FULL STRENGTH, measured down from the
+                      field's own top. Keep it at bleed + ~60px so the ramp
+                      always lands as the resume card begins (the card starts
+                      64px into the section) however far the start moves. Tying
+                      it to the bleed instead would mean every step down also
+                      shortened the ramp, and a 30px ramp is an edge, which is
+                      the thing this whole section is trying not to have. */
   @media (max-width: 760px) {
-    .about { --about-bleed: 90px; }
+    .about { --about-bleed: 30px; }
     .about-dither-wrap {
       -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 90px, #000 calc(100% - 120px), transparent 100%);
       mask-image: linear-gradient(to bottom, transparent 0, #000 90px, #000 calc(100% - 120px), transparent 100%);
