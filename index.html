@@ -93,6 +93,7 @@
      EYE_COVER; a missing entry just costs that one tile its head start.
      eye.webp is the 1/50 easter-egg cover, so on the ~20% of loads where no tile
      rolls an eye Chrome warns it went unused. That warning is expected. -->
+<link rel="preload" as="image" type="image/webp" href="assets/covers/wildfire.webp" crossorigin />
 <link rel="preload" as="image" type="image/webp" href="assets/covers/invoice.webp" crossorigin />
 <link rel="preload" as="image" type="image/webp" href="assets/covers/discord.webp" crossorigin />
 <link rel="preload" as="image" type="image/webp" href="assets/covers/printer.webp" crossorigin />
@@ -1695,6 +1696,13 @@
           <h4>Description</h4>
           <p id="modal-desc"></p>
         </section>
+        <!-- Only rendered for projects that declare `hardPart`; the small toys
+             don't have one and shouldn't pretend to. Hidden via [hidden], which
+             works here because no author rule sets `display` on these <section>s. -->
+        <section id="modal-hard-sec" hidden>
+          <h4>The hard part</h4>
+          <p id="modal-hard"></p>
+        </section>
         <section>
           <h4>Objective</h4>
           <p id="modal-objective"></p>
@@ -1738,6 +1746,7 @@
   <footer class="site-footer">
     <nav class="footer-nav" aria-label="Experiments">
       <ul>
+        <li><a href="experiments/wildfire.html">Wildfire Escalation Watch</a></li>
         <li><a href="experiments/invoice-game.html">Invoice Rush</a></li>
         <li><a href="experiments/make-your-own.html">Make Your Own Portrait</a></li>
         <li><a href="experiments/print.html">Receipt Printer</a></li>
@@ -2758,18 +2767,50 @@
     //   • `coverRaw`— set true when the cover is ALREADY compile-style pumpkin-
     //                on-cream art: skips the duotone + dark scrim, flips the
     //                #num/label to dark ink. (discord, lissajous, data, headshot)
+    //   • `hardPart`— optional. Gets its own "The hard part" section in the
+    //                modal, between Description and Objective; omit it and that
+    //                section is hidden entirely. This is the field that does the
+    //                selling: what fought back, and what it cost to win. Keep
+    //                `description` to what the thing IS and DOES, and put the
+    //                constraint, the failure, and the workaround here. The small
+    //                toys (lissajous, sudoku, make-your-own) deliberately have
+    //                none — inventing a struggle for a 200-line toy reads worse
+    //                than admitting it was easy.
     //   • `pick` / `pickPoints` — only on the projects listed in FEATURED below:
     //                the short "why this one" blurb, and three chips naming what
     //                the thing actually reaches (sold / self-hosted / talks to
     //                hardware), NOT its languages.
     const PROJECTS = [
       {
+        label: "Wildfire Forecast",
+        title: "Canadian Wildfire Escalation Forecast",
+        lead: "A model that reads a brand-new wildfire 24 hours after Canada first reports it, and estimates the odds it passes 100 hectares. The hard part isn't the model… it's making sure it only ever sees what was actually known at the time.",
+        description: "A fire enters the national reporting feed and 24 hours later the model asks one question: will this be a large fire, 100 hectares or more, three days after it was first reported? It pulls open government data with no API keys at all: every reported fire and its full revision history from NRCan's national GeoServer, satellite hotspot detections that already carry Canadian fire-behaviour outputs, and CIFFC's national preparedness level. The whole thing hangs on the feed being bitemporal: every fire carries many revisions, each stamped with the window it was believed in, so “what was known at 24 hours” is a filter rather than a reconstruction. The dashboard is one self-contained page with a live risk map, the ranked watchlist, and the backtests.",
+        hardPart: "Two of them had nothing to do with wildfires. The first was the imbalance fix that made the model worse: weighting the rare escalation class helped the trees find it and wrecked the calibration doing it, to the point that a Brier score of 0.0246 lost to simply predicting the base rate at 0.0203, and the top risk bucket promised 16.9% where 10.1% actually escalated. PR-AUC never noticed, which is the lesson. Fitting unweighted and then isotonically calibrating on a temporally held back slice, rather than a random one, put it back on the right side of the baseline. The second was worse, because it made the score itself a liar. The headline number moved twice for reasons that were not in the data: LightGBM’s row subsampling and the calibration split’s tie break both read raw row position, so the same fires in a different physical order scored anywhere from 0.258 to 0.296… a wider spread than any real feature in the project. Imposing a total order fixed that and exposed another layer underneath, where DuckDB reduces float sums in whatever order its threads happen to finish, drifting the last bits of an average and moving about 35 fires out of 21,500 across a split threshold. That one is decimal arithmetic and an explicit ordering now, with tests that fail if either comes back.",
+        objective: "Build a forecast that survives the checks that usually kill one: hold out a whole season, hold out a whole province, and score every result against the only baseline that matters… how big the fire already is.",
+        stack: ["Python", "LightGBM", "Polars / DuckDB", "Parquet", "WFS / OGC", "Matplotlib"],
+        links: [
+          // Keep this short. In the picks strip the primary shares a row with
+          // "Details →", and the tightest 3-up card (just above the 980px
+          // 2-up breakpoint) leaves 266px for both. "Open the dashboard" was
+          // 300 and wrapped the ghost button onto its own line.
+          { label: "See the model", href: "experiments/wildfire.html" },
+          { label: "Source", href: "https://github.com/evankoza/wildfire-forecast" },
+        ],
+        photos: [],
+        cover: "assets/covers/wildfire.webp",
+        coverRaw: true,
+        pick: "The one that had to be honest to be worth anything. It scores fires that are burning right now, so I checked it the hard way… hold out a season, hold out a whole province, and it still beats the baseline.",
+        pickPoints: ["Scores real fires", "Zero API keys", "Backtested two ways"],
+      },
+      {
         label: "Invoice Scanner",
         title: "Invoice Scanner",
-        lead: "A local web app that turns invoice receiving from a barcode-by-barcode slog into a guided scan-and-reconcile flow. Built for my own shift, mostly.",
-        description: "A Flask web app I built for my receiving job: it imports an invoice from a PDF, hosts a local scanning page driven by a Zebra handheld, and tracks each item’s scanned quantity against the expected quantity. It has add/remove scan modes, a live scan log, and Excel export of the finalized differences. Built around the RCSS standardized documents I work with day to day.",
-        objective: "Replace the hand-counted, paper-against-screen receiving process with something scanner-driven that flags over- and under-shipments on its own.",
-        stack: ["Python", "Flask", "PDF parsing", "UPC / barcode", "Excel"],
+        lead: "A desktop in the back room parses the invoice PDF and then turns into a server for the receiving floor. The Zebra handheld joins it over the shop LAN, and every trigger pull is an HTTP round trip that comes back as a dashboard. The gun holds nothing, which is the only reason a count survives a dead battery.",
+        description: "A Flask app that lives on one desktop in the back of the store, deliberately not in the cloud, because a receiving shift cannot stop when the store’s internet does. It ingests the RCSS invoice PDF, pulls every line, quantity and UPC out of a layout that was built for a printer and not for a parser, and files the converted copy so the same invoice never gets imported twice. Then it stops being a script and becomes a server: it hosts a scanning page that the Zebra handheld loads over the LAN. Every trigger pull is an HTTP request, and the reply carries the whole picture back… the item name, scanned against expected, and what is still outstanding, so the handheld renders a live dashboard instead of just beeping into the void. Add and remove modes cover returns, the live scan log makes a bad count traceable instead of a mystery, and the finalized over and under shipments export to Excel for the claim.",
+        hardPart: "Deciding that the scanner gets to know nothing. A receiving bay is a bad network and a worse place to keep state: the handheld walks out of range behind a pallet, the battery dies, someone grabs the spare gun halfway down the skid. So the desktop holds the only copy of the truth and the handheld is a browser with a laser on it, asking a question every time the trigger goes. Nothing out on the floor is ever the authority on how many boxes arrived, which is what makes all of those failures free… the next scan just picks up where the last one left off.",
+        objective: "Take the hand counting out of receiving without asking the store to trust its internet, or the receiver to trust their memory. One machine on the LAN owns the state, the handheld is a thin client that only ever asks questions, and the count stays correct even when the hardware in someone’s hand is not.",
+        stack: ["Python", "Flask", "PDF parsing", "HTTP over LAN", "UPC / barcode", "Excel"],
         links: [
           { label: "Launch demo", href: "experiments/invoice-game.html" },
           { label: "Source", href: "https://github.com/evankoza/evankoza.github.io/blob/main/experiments/invoice-game.html" },
@@ -2780,16 +2821,17 @@
         photos: [],
         cover: "assets/covers/invoice.webp",
         coverRaw: true,
-        pick: "The one that turned into an actual product. It’s been sold, and it runs a real receiving shift… scan the box and it reconciles itself against the invoice.",
-        pickPoints: ["Sold, in daily use", "PDF invoice parsing", "Zebra scanner over LAN"],
+        pick: "The one that turned into an actual product; it has been sold, and it runs a real receiving shift. A desktop in the back parses the invoice and serves the floor, the Zebra joins over LAN, and every trigger pull is an HTTP round trip that comes back as a dashboard on the gun.",
+        pickPoints: ["Sold, in daily use", "Parses the invoice PDF", "Handheld is a thin client"],
       },
       {
         label: "Discord Play-Together Bot",
         title: "Steam Play-Together Bot",
-        lead: "A Discord bot that finds the multiplayer games you and your friends actually own in common, then helps you pick one. The overlap is usually smaller than you'd hope.",
-        description: "Enter a SteamID64 or display name and the bot pulls your Steam friends list, lets you pick up to five friends, and compares everyone’s libraries to surface only the titles Steam marks as multiplayer. /compare lists the overlap; /roulette spins through it for you. It handles private libraries and Steam/store API hiccups gracefully.",
-        objective: "Kill the “what can we all actually play together?” group-chat stalemate with one slash command.",
-        stack: ["Python", "discord.py", "Steam Web API"],
+        lead: "A Discord bot that finds the multiplayer games you and your friends actually own in common, then helps you pick one. Steam will happily list everything a person owns; it will not tell you which of those are multiplayer, and it will not turn a display name into an account. Both of those had to be built by hand.",
+        description: "Type a SteamID64 or just a display name, pick up to five friends off a paginated menu, and the bot intersects everybody’s library and shows you only what you can all actually play together. /compare lists the overlap; /roulette spins through it and takes votes by reaction. The friend picker pages at 25 because that is Discord’s own cap on a select menu, and your picks survive paging away from them. Every slow leg defers inside the three second interaction window, so the bot never looks dead while it is waiting on Steam.",
+        hardPart: "Steam does not answer the question this bot is built on. Nothing in the Web API says a game is multiplayer, so every appid in the raw intersection takes a second round trip to the undocumented storefront endpoint, and the verdict comes from matching its category labels against a list of thirteen strings… “Online PvP”, “MMO” and eleven more like them, which means the whole feature rests on Valve not rewording a label. Those checks run eight at a time behind a semaphore so a group with a big shared library does not look like an attack. Names are worse, because there is no name lookup at all: it scrapes the community search, which first needs a throwaway request just to mint a session cookie, then pulls profile links out of an HTML fragment, and when a match only has a vanity URL it rebuilds the real 64 bit ID from the miniprofile attribute and Steam’s old 32 bit offset. After that it is all failure modes. A 401 on the friends list means that list is private and it says so; a 403 means my key got rejected and it says that instead; a friend with a hidden library gets named as excluded while the compare runs on everyone else; and the roulette vote recounts reactions off the message itself, because the gateway payload cannot be trusted to be current.",
+        objective: "Kill the “what can we all actually play together?” stalemate with one slash command, using an API that was never built to answer the question. Most of the work is deciding what to do when Steam hands you a 401, a wrong shaped ID, or a category label where you wanted a fact.",
+        stack: ["Python", "discord.py", "asyncio / aiohttp", "Steam Web API", "HTML scraping"],
         links: [
           { label: "Try the demo", href: "experiments/discord-bot-demo.html" },
           { label: "Add to Discord", href: "https://discord.com/oauth2/authorize?client_id=1480349911651450991" },
@@ -2798,15 +2840,16 @@
         photos: [],
         cover: "assets/covers/discord.webp",
         coverRaw: true,
-        pick: "Discord’s bot API, Steam’s Web API, some scraping for what Steam won’t hand over, all running off my home server… to settle one argument: what can the five of us actually play tonight?",
-        pickPoints: ["Live Discord bot", "Steam API + scraping", "Self-hosted 24/7"],
+        pick: "Discord’s API, Steam’s API, and scraping for the two things Steam refuses to hand over: whether a game is multiplayer, and who someone is by name. All of it running off my home server to settle one argument… what can the five of us actually play tonight?",
+        pickPoints: ["Live Discord bot", "Scrapes what Steam hides", "Self-hosted 24/7"],
       },
       {
         label: "Data Analysis",
         title: "Student Performance Analysis",
-        lead: "A Pandas notebook digging into what actually correlates with exam scores… and what turns out not to.",
-        description: "A Pandas / Matplotlib notebook exploring a public Kaggle dataset of student test scores across math, reading, and writing alongside background factors. The headline findings: lunch status shows one of the strongest associations with performance across every subject, test prep links to higher reading and writing scores, and parental education tracks a gradual positive trend. Gender differences turn out to be subject-specific rather than overall.",
-        objective: "Practice end-to-end EDA, from cleaning and grouping through to visual storytelling, and find out which factors actually move student outcomes.",
+        lead: "A Pandas notebook on a public dataset of exam scores. Group means and charts, labelled as exactly that… the part I would still defend is the one place I stopped to ask whether a gap was really the variable I thought it was.",
+        description: "A Pandas / Matplotlib notebook exploring a public Kaggle dataset of 1,000 students: test scores across math, reading and writing against five background variables. It is descriptive work and it says so, distributions with the mean and median marked, then group means per category as horizontal bars. Lunch status carries the widest gap in every subject, test prep tracks higher reading and writing, parental education climbs gradually, and gender differences turn out to be subject-specific rather than overall. Then one crosstab of ethnicity against parental education, asking whether that gap was about ethnicity at all or just about who happens to have degree holding parents.",
+        hardPart: "Knowing what this is not allowed to say. Lunch status is the loudest signal in the dataset and it is also a stand in for household income, which means the tidy version of the finding, feed kids better and the grades follow, is not something a thousand rows of group means can support. There are no significance tests in here, no effect sizes and no controls, so every number is an association and nothing more. Chasing the confound once, on the ethnicity gap, is the instinct I would keep; the rest of it taught me that the analysis was the easy half and the restraint is the actual skill.",
+        objective: "Work a dataset end to end, from cleaning through to a chart someone can read a story off, and find out where descriptive statistics stop being allowed to answer the question you actually care about.",
         stack: ["Python", "Pandas", "Matplotlib", "Jupyter"],
         links: [
           { label: "View notebook", href: "https://github.com/evankoza/student-performance-analysis/blob/main/analysis.ipynb" },
@@ -2819,9 +2862,10 @@
       {
         label: "Eternal FM",
         title: "Eternal FM",
-        lead: "An infinite playlist machine. Songs play forever, jumping between musically similar moments so a track loops seamlessly and one song flows into the next. You can leave it running all day, which is sort of the point.",
-        description: "An Eternal Jukebox-style web player I built from the signal processing up. The whole song is decoded into a Web Audio buffer, so a “quantum leap” is just a different read offset, completely gapless. To decide where it can jump, a Web Worker runs a full DSP pass on the raw waveform: spectral flux → onset envelope → tempo and beat grid → per-beat chroma and timbre vectors. Candidate jumps are phrase-aligned (a whole number of 16-beat phrases away) and scored on musical similarity, so leaps land on the beat and feel intentional. Between songs, a compatibility graph picks what flows next. The public demo runs 100% client-side on Creative Commons tracks, with a live timeline that telegraphs each upcoming jump and pulses as it fires.",
-        objective: "Recreate the Infinite Jukebox’s never-ending playback with my own DSP. No ML black box, just classic signal processing I can explain end to end.",
+        lead: "An infinite playlist machine. A song never has to end; it jumps between musically similar moments so the loop is seamless and you can leave it running all day, which is sort of the point. Spotify used to hand out the beat and pitch analysis that makes that possible, and then stopped… so the whole DSP chain is me computing it off the waveform instead.",
+        description: "An Eternal Jukebox style player built from the signal processing up. The whole song is decoded into one Web Audio buffer, so a “quantum leap” is just a different read offset into memory rather than a seek or a re-fetch: completely gapless. To work out where it is allowed to jump, a Web Worker runs a full DSP pass on the raw waveform: spectral flux → onset envelope → tempo and beat grid → per-beat chroma and timbre vectors. A candidate has to be phrase legal, a whole number of 16 beat phrases away, and among the legal ones only the spectrally closest survives, scored across a six beat window so the landing beat matters most and the ones after it taper off. Between songs, a compatibility graph over key, tempo, energy and valence picks what plays next. The public demo runs 100% client-side on Creative Commons tracks, with a live timeline that telegraphs each upcoming jump and pulses as it fires.",
+        hardPart: "Two clocks, and a lot of things that sounded wrong before they sounded right. Audio is scheduled 1.2 seconds ahead of the ear by a timer that wakes every 25 ms, and neither number is arbitrary… analysing the next track blocks the main thread for up to a second, and the audio clock has to survive that without starving. The first version crossfaded every beat into the next, which meant adjacent beats overlapped while reading the same samples and put an audible pulse on every single beat; now only a jump gets a splice, six milliseconds of ramp, and beats that really are adjacent play back to back with no gain node at all. The phrase maths had an off by one that only ever surfaced as a rhythmic hiccup: the engine plays the origin beat and then the landing, so the landing has to be phrase equivalent to the origin’s natural successor rather than to the origin itself, and getting that backwards repeated one phrase position on every jump. A fixed similarity threshold turned out to be worthless too, because a homogeneous ambient track and a wildly varied one do not share a scale, so the cutoff is now the 25th percentile of that song’s own candidate distances and every track calibrates itself. Even the tempo detector needed a guard: strong eighth note onsets make double tempo look as convincing as the truth, so each candidate period is scored with half the peak at double its lag added in, which a spurious double time pick gets no support from.",
+        objective: "Recreate the Infinite Jukebox’s never-ending playback after the API that made it possible went away. No ML black box, just classic signal processing I can explain end to end, computed in the browser off the raw samples.",
         stack: ["TypeScript", "Web Audio API", "Web Workers", "DSP / FFT", "Vite"],
         links: [
           { label: "Launch demo", href: "experiments/eternal-fm.html" },
@@ -2834,9 +2878,10 @@
       {
         label: "ESP32 ChessBot",
         title: "ESP32 ChessBot",
-        lead: "A full chess engine running on a tiny ESP32 with a TFT screen. One engine plays both sides, forever. When a game ends it just starts another one.",
-        description: "A complete chess engine running on an ideaspark ESP32 with a 1.9\" ST7789 display. One engine plays both colours. Every quarter-second it searches for the side to move, plays it, and hands over the clock. It has full legal move generation (castling, en passant, under-promotion, check detection), a material + piece-square evaluation, and a depth-3 alpha-beta search with captures ordered first. It picks randomly among near-best moves so no two games look alike, renders a chess.com-style eval bar, and starts a fresh game on every checkmate, stalemate, or draw. No networking, no opening book. The whole thing lives in about 700 lines on the microcontroller.",
-        objective: "Get to know the ESP32 + ST7789 hardware by fitting a real chess engine onto a microcontroller: search, evaluation, and a flicker-free renderer.",
+        lead: "A full chess engine on a tiny ESP32 with a 1.9 inch screen, playing itself forever. The chess turned out to be the easy half; the microcontroller had 8 KB of stack, a display that misreported its own size, and no patience for a board you repaint all at once.",
+        description: "One engine plays both colours on an ideaspark ESP32 with a 1.9\" ST7789. Every quarter second it searches for the side to move, plays it, and hands over the clock. Legal move generation gets there the simple way on purpose: generate the pseudo legal moves, copy the whole position, play one, and ask whether your own king is now attacked. That is a board copy per candidate move, which a serious engine would never accept… at depth 3 it costs nothing, and it means there are no pin bitboards to get subtly wrong. Castling verifies that the king’s start, transit and landing squares are all unattacked, en passant is a stored target square, and every promotion generates all four pieces instead of assuming a queen. It picks randomly among moves within 30 centipawns of the best, off the hardware RNG, because a fixed depth engine playing itself deterministically would replay one game forever. No opening book, no transposition table, and no quiescence search, so it is genuinely blind to a hanging piece one ply past its horizon. About 700 lines, all of it on the microcontroller.",
+        hardPart: "The recursion nests a 256 move buffer and a whole position copy at every ply, which overflows the ESP32’s default 8 KB loop task stack on real silicon, so the sketch triples it to 24 KB before anything else runs. Repainting the board each move made the screen strobe, so it remembers the piece and the highlight last drawn in all 64 squares and only touches the ones that changed. The panel also lied about its own resolution, so the code reads width and height back at runtime and fits the board to the short side… and it still carries a hand tuned nudge on top, for the offset the panel would not admit to. Even the art is a memory decision: each piece is two 32 byte bitmaps, a solid body and an engraved detail pass, recoloured per side and outlined by blitting the body four times at one pixel offsets. That is 384 bytes of art for twelve pieces, and both colours stay legible on light and dark squares.",
+        objective: "Fit a real engine, search and evaluation and all, into a device with kilobytes of stack and a screen that strobes if you touch too much of it at once. Every limit here is physical rather than a matter of taste, so the interesting part is deciding what to give up and what to refuse to.",
         stack: ["C++", "ESP32 / Arduino", "TFT_eSPI", "Alpha-beta search"],
         links: [
           { label: "View on GitHub", href: "https://github.com/evankoza/chessbot" },
@@ -2848,9 +2893,10 @@
       {
         label: "Receipt Printer",
         title: "Receipt Printer: Print at My House",
-        lead: "Design a receipt in your browser and it prints on real paper… on a thermal printer sitting in my house.",
-        description: "A live print station: the page composes text and images on a 384-pixel-wide canvas, dithers it client-side with your pick of Floyd-Steinberg, Atkinson, Bayer, halftone, or crosshatch, so what you see is pixel-for-pixel what prints, and sends a packed 1-bit bitmap to a relay on my home server. An ESP32 picks the job up over an outbound WebSocket and streams ESC/POS raster commands to an MPT-II Bluetooth receipt printer. Rate-limited so the internet can't burn through my paper roll too fast.",
-        objective: "Close the loop between a public web page and a physical machine in my house: browser to server to microcontroller to paper.",
+        lead: "Design a receipt in your browser and it comes out on real paper, on a thermal printer sitting in my house. The hard part was never the printing… it was that Bluetooth and a TLS handshake will not both fit in an ESP32’s RAM at the same time.",
+        description: "A live print station. The page composes text and images on a 384 pixel wide canvas and dithers it in your browser, your pick of Floyd Steinberg, Atkinson, Bayer, halftone or crosshatch. The preview is not really a preview; the exact 1 bit array you are looking at is the array that gets packed and sent, so there is no second rendering path that could quietly disagree with it. From there a relay on my home server queues the job, and an ESP32 picks it up over a WebSocket it dialled out itself, which means nothing at my house has an open port. It is a public page pointed at a real machine, so it is fenced accordingly: three prints a minute per IP, 5 cm of paper a job, an origin allowlist, a constant time compare on the device token, and a strict dimension check at the relay so nothing malformed ever reaches the microcontroller.",
+        hardPart: "Every wall I hit was a resource limit rather than a bug. Bluetooth Classic and an mbedTLS handshake will not fit in the ESP32’s RAM at the same time, so the boot order is load bearing: bring the socket up first, start Bluetooth second, and if the relay drops while Bluetooth is live the only honest recovery is a full reboot, because the handshake can no longer allocate. The job buffer has to be heap allocated after Bluetooth is up for the same reason… reserving it at compile time left too little heap for the radio to start at all. Printing had to move out of the WebSocket callback too, because draining a job inline blocks the event loop long enough to miss a heartbeat, and a missed heartbeat costs exactly that reboot. Then the printer itself: it will happily accept bytes faster than its head can burn them and then desync into garbage, so output goes through a token bucket at 6 KB a second. And it ignores the ESC/POS feed command outright, so feeding blank paper is 40 rows of empty raster through the one command it demonstrably honours.",
+        objective: "Close the loop from a public web page to a physical machine in my house, and make it survive being left on. Almost every failure here was a resource limit rather than a logic bug, so most of the real work is sequencing, pacing, and knowing when a reboot is the correct answer instead of a retry.",
         stack: ["Vanilla JS", "HTML Canvas", "Node.js", "WebSocket", "ESP32 / C++", "ESC/POS"],
         links: [
           { label: "Launch demo", href: "experiments/print.html" },
@@ -2895,8 +2941,9 @@
       {
         label: "Infinite Minesweeper",
         title: "Infinite Minesweeper",
-        lead: "Minesweeper with the edges taken off. An endless minefield you pan through forever, built a chunk at a time as you explore.",
+        lead: "Minesweeper with the edges taken off. An endless minefield you pan through forever, built a chunk at a time as you explore. Hit a mine and only the chunk you were standing in resets, which turned out to hinge on never storing a single number.",
         description: "A borderless take on the classic. The field is generated in 8×8 chunks on demand as you drag around, so there’s always more board in every direction. Clear a whole chunk and it lights up; hit a mine and only that chunk resets, so a wrong click never wipes the rest of your progress. Left-click to clear, right-click to flag, click a satisfied number to chord, and drag anywhere to pan. Your world is saved to localStorage, so it’s waiting exactly where you left it.",
+        hardPart: "An infinite board is easy until you die on it. Resetting the whole world over one wrong click is unacceptable, and resetting a single chunk should mean every number bordering it is now wrong… unless the numbers were never stored in the first place. So they aren’t. A cell’s count is recomputed every render by asking its eight neighbours whether they are mines, and asking a neighbour that lives in a chunk nobody has visited quietly generates that chunk on the spot. Which makes killing a chunk nothing more than swapping its mine set: the surrounding numbers fix themselves on the next frame, and there is no invalidation logic anywhere in the file because there is no cache to invalidate. The honest cost is that a number you already uncovered next door can change after a nearby reset, since it was never a stored fact, only ever a live question. Two things I would still fix: a zero region can cascade across as many chunks as it likes with nothing but mine density bounding it, and the save grows forever, because merely panning near an edge generates a chunk and every chunk ever generated gets written out.",
         objective: "See how far minesweeper stretches once you remove the one rule that makes it finite: the edge of the board.",
         stack: ["Vanilla JS", "Procedural chunks", "DOM grid", "localStorage"],
         links: [
@@ -2911,7 +2958,8 @@
         label: "Daily Sudoku",
         title: "Daily Sudoku",
         lead: "Three fresh sudoku on a wooden table, every day. Flip through the stack, pencil in your answers, and that’s it.",
-        description: "A quiet, paper-first take on sudoku. Every day it deals three puzzles (easy, medium, hard) seeded from the date, so everyone gets the same set and it’s identical each time you come back. They sit as a stack on a wooden table: click the dog-eared corners (or the arrow keys) to flip between them, left-click to pencil, right-click to erase, and hold Space to magnify the fine print. No timer, no hints, no checking, no number pad. Just you, a pencil, and the puzzles. Your marks are saved locally, so a half-solved grid is waiting exactly where you left it.",
+        description: "A quiet, paper-first take on sudoku. Every day it deals three puzzles (easy, medium, hard) seeded from the date, so the set is the same for everyone whose calendar says the same thing, and identical every time you come back to it. They sit as a stack on a wooden table: click the dog-eared corners (or the arrow keys) to flip between them, left-click to pencil, right-click to erase, and hold Space to magnify the fine print. No timer, no hints, no checking, no number pad. Just you, a pencil, and the puzzles. Your marks are saved locally, so a half-solved grid is waiting exactly where you left it.",
+        hardPart: "Two things had to be genuinely correct rather than merely convincing. The first is that a dug out grid still has exactly one solution, which is not something you can eyeball. Every time a cell is emptied the whole grid goes back through a backtracking solver that counts solutions and bails the instant it finds a second, so a cell only stays blank if removing it left the puzzle provably unique. With a most constrained cell first heuristic that is quick enough to build all three puzzles in the browser on load, roughly 25 to 50 ms, which is why there is no worker and nothing precomputed. The second is geometry. Every page sits at a few degrees of tilt to sell the stack of paper, and the moment a page is rotated the pointer stops agreeing with the canvas underneath it, so every click and drag runs back through the inverse rotation before it becomes ink. The tilt is also the one value in the whole app deliberately left unseeded… the puzzles have to be the same for everybody, but the paper should sit differently every time you pick it up.",
         objective: "Strip sudoku back to the newspaper experience. No assists, no scoring, just three puzzles and a pencil that resets each day.",
         stack: ["Vanilla JS", "HTML Canvas", "Seeded generation", "localStorage"],
         links: [
@@ -2926,8 +2974,9 @@
         label: "Gregg Shorthand Tutor",
         title: "Gregg Shorthand Tutor",
         lead: "Learn Gregg shorthand with your mouse… the motion itself is the letter. Pointer Lock turns raw movement into ink and reads each stroke by its shape and length.",
-        description: "A single-file typing-tutor for a pen system. Pointer Lock hides the cursor and captures raw motion, so a flick of the mouse becomes fluid “ink”. There is no clicking; the gesture itself is the letter, recognized by shape and size independent of position. Pause for half a second and the stroke commits (Gregg letters are single fluid motions). Strokes are matched against a Gregg Simplified consonant + vowel template set drawn at one shared scale, so relative length reads true (g ≈ 2× k, big-circle a vs small e). Three modes: Freeform draws anything and shows the recognized shorthand with ranked alternates; Words drills an English word one letter at a time with a faint on-pad guide; Challenge is a MonkeyType-style timed run that ends in a results card with wpm, accuracy, and your actual stroke overlaid on each ideal glyph.",
-        objective: "Build muscle memory for a handwriting system with nothing but a mouse, reading gestures by shape and proportion the way someone who reads shorthand does.",
+        description: "A single-file typing-tutor for a pen system. Pointer Lock hides the cursor and captures raw motion, so a flick of the mouse becomes fluid “ink”. There is no clicking; the gesture itself is the letter. Pause for a beat and the stroke commits, because Gregg letters are single fluid motions, and anything under about 14 pixels of travel is thrown away as a twitch rather than guessed at. Every glyph is a parametric entry in one table, built from a line, an arc or a circle, so there are no traced assets to go stale and a wrong shape is a one line fix. Three modes: Freeform draws anything and shows the recognized shorthand with ranked alternates; Words drills an English word one letter at a time with a faint on-pad guide; Challenge is a MonkeyType-style timed run that ends in a results card with wpm, accuracy, and your actual stroke overlaid on each ideal glyph.",
+        hardPart: "Gregg is a proportional system, so the recognizer has to keep the two things a normal gesture recognizer throws away first. Rotation has to stay, because slant is what separates whole letter families… k and r and n run flat, t and d climb, p and b and s fall. And absolute size has to stay, because g is just k drawn about twice as long, and a is e drawn bigger. So a stroke is resampled to 32 points by arc length and centred and scaled to compare its shape, and then size gets deliberately fed back in as a penalty. That penalty was a plain difference at first, and it was wrong: size error is multiplicative, so “20% too long” has to mean the same thing on a short stroke as a long one, and until it did, the length neighbours kept drifting into each other. A log ratio fixed the whole family at once. The bigger win was a signed curl term, measuring how far the path bows off its own start to end chord: near zero for a line, small for a shallow arc, large for a deep hook, negative when it bows the other way. That one feature collapsed the confusions between s and o, s and p, and n against k and r, and it now carries three times the weight of raw shape matching. Top one accuracy went from about 83% to 88%, and s alone from 75% to 92%. What it still cannot do is worth admitting: an isolated stroke has no size reference, so k against g, n against m and a against e are genuinely undecidable in Freeform, and it offers both as ranked alternates instead of pretending. The fix for that was not a cleverer recognizer, it was changing the exercise… Words mode scores you against a fixed size guide on the pad, which is how you are meant to learn proportion anyway.",
+        objective: "Build muscle memory for a handwriting system with nothing but a mouse, reading gestures by shape and proportion the way someone who reads shorthand does. Which means being honest about the strokes that are impossible to tell apart in isolation, and designing the drill around them instead of over-claiming the recognizer.",
         stack: ["Vanilla JS", "Pointer Lock API", "HTML Canvas", "Shape recognition"],
         links: [
           { label: "Launch demo", href: "experiments/gregg-tutor.html" },
@@ -2948,10 +2997,13 @@
     // swap takes (no pickPoints just falls back to the stack chips).
     // They stay in the wall below too; this is emphasis, not a
     // separate collection.
+    // Receipt Printer keeps its `pick`/`pickPoints` even though it dropped out
+    // of the three — unused fields cost nothing, and swapping it back in is
+    // then a one-line edit here rather than a rewrite of its card copy.
     const FEATURED = [
+      "Wildfire Forecast",
       "Invoice Scanner",
       "Discord Play-Together Bot",
-      "Receipt Printer",
     ];
 
     // ── 1. build the placeholder tiles ────────────────────────────────
@@ -3325,6 +3377,8 @@
     const actionsEl = document.getElementById("modal-actions");
     const photosEl = document.getElementById("modal-photos");
     const descEl = document.getElementById("modal-desc");
+    const hardSecEl = document.getElementById("modal-hard-sec");
+    const hardEl = document.getElementById("modal-hard");
     const objEl = document.getElementById("modal-objective");
     const stackEl = document.getElementById("modal-stack");
     let modalField = null;   // set up in §4
@@ -3361,6 +3415,8 @@
       titleTextEl.textContent = proj.title;
       leadEl.textContent = proj.lead;
       descEl.textContent = proj.description;
+      hardEl.textContent = proj.hardPart || "";
+      hardSecEl.hidden = !proj.hardPart;
       objEl.textContent = proj.objective;
 
       // action buttons — first link is the filled primary, rest are ghosts.
