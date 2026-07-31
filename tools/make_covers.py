@@ -554,6 +554,91 @@ def src_sudoku(size=1000):
     return img.resize((size, size), Image.LANCZOS)
 
 
+# ---------------------------------------------------------------- wildfire forecast
+# Canada as one solid landmass, with the fires punched back OUT of it. In the
+# knockout the subject becomes a transparent hole, so the country reads as paper
+# and anything left blank inside it stays pumpkin -- which makes "white dots on a
+# dark map" render as glowing orange fires on a cream Canada. Exactly the read
+# the dashboard's map has.
+#
+# Same Lambert conformal conic the dashboard projects in (49N/77N, 95W central),
+# so the silhouette is the one the live map draws, not a generic outline. Rings
+# under MIN_RING of the frame are dropped: the arctic archipelago is hundreds of
+# specks that sample to single stray blocks and read as dirt, not as islands.
+PROVINCES_JSON = r"C:\wildfire-forecast\src\wildfire\assets\canada_provinces.json"
+
+
+def src_wildfire(size=1000):
+    import json as _json
+
+    D2R = math.pi / 180
+    P1, P2, P0, L0 = 49 * D2R, 77 * D2R, 44 * D2R, -95 * D2R
+    N = (math.log(math.cos(P1) / math.cos(P2))
+         / math.log(math.tan(math.pi / 4 + P2 / 2) / math.tan(math.pi / 4 + P1 / 2)))
+    F = math.cos(P1) * math.tan(math.pi / 4 + P1 / 2) ** N / N
+    RHO0 = F / math.tan(math.pi / 4 + P0 / 2) ** N
+
+    def project(lon, lat):
+        rho = F / math.tan(math.pi / 4 + lat * D2R / 2) ** N
+        th = N * (lon * D2R - L0)
+        return rho * math.sin(th), RHO0 - rho * math.cos(th)
+
+    provinces = _json.load(open(PROVINCES_JSON, encoding="utf-8"))
+    rings = [[project(x, y) for x, y in ring] for p in provinces for ring in p["r"]]
+
+    xs = [x for r in rings for x, _ in r]
+    ys = [y for r in rings for _, y in r]
+    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
+    spanx, spany = maxx - minx, maxy - miny
+
+    W = H = size * SS
+    pad = W * 0.05
+    scale = min((W - 2 * pad) / spanx, (H - 2 * pad) / spany)
+    offx = (W - spanx * scale) / 2
+    offy = (H - spany * scale) / 2
+    # y flips: projected y grows north, image y grows down.
+    def to_px(p):
+        return offx + (p[0] - minx) * scale, offy + (maxy - p[1]) * scale
+
+    img = Image.new("L", (W, H), 255)
+    d = ImageDraw.Draw(img)
+
+    MIN_RING = W * 0.065          # shortest side a ring must span to be drawn
+    for r in rings:
+        pts = [to_px(p) for p in r]
+        rx = max(p[0] for p in pts) - min(p[0] for p in pts)
+        ry = max(p[1] for p in pts) - min(p[1] for p in pts)
+        if max(rx, ry) < MIN_RING:
+            continue
+        d.polygon(pts, fill=0)
+
+    # A representative fire season, in lon/lat, sized by modelled risk. Eight,
+    # not the twenty a real day carries: they sit along the boreal belt so the
+    # pattern reads as where Canada actually burns, and any two closer than
+    # about 6 degrees of longitude merge into one blob at this glyph size.
+    FIRES = [
+        (-122.5, 53.5, 0.95),   # BC interior
+        (-135.5, 62.5, 0.55),   # Yukon
+        (-118.5, 63.5, 0.48),   # NWT, Great Slave
+        (-114.5, 57.5, 0.75),   # northern Alberta
+        (-105.5, 56.5, 0.88),   # northern Saskatchewan
+        (-98.0, 54.0, 0.58),    # Manitoba
+        (-91.5, 50.5, 0.72),    # northwestern Ontario
+        (-73.5, 51.5, 0.85),    # Quebec, north of the St Lawrence
+    ]
+    # Narrow band, and both ends deliberately small. A dot under ~2.5 glyph cells
+    # samples to a lone block and reads as dirt; over ~5 and the dots stop being
+    # fires on a map and start eating the coastline that makes it Canada.
+    r_min, r_max = W * 0.016, W * 0.026
+    for lon, lat, risk in FIRES:
+        x, y = to_px(project(lon, lat))
+        r = r_min + (r_max - r_min) * risk
+        d.ellipse([x - r, y - r, x + r, y + r], fill=255)
+
+    img = img.filter(ImageFilter.GaussianBlur(W * 0.0022))
+    return img.resize((size, size), Image.LANCZOS)
+
+
 if __name__ == "__main__":
     C = r"C:\website\assets\covers"
     S = r"C:\website\tools\covers-src"   # clean pumpkin-on-parchment originals
@@ -566,6 +651,7 @@ if __name__ == "__main__":
     asciify(src_minesweeper(), C + r"\minesweeper.webp")  # infinite minesweeper mine
     asciify(src_sudoku(), C + r"\sudoku.webp")            # daily sudoku grid
     asciify(src_gregg(),  C + r"\gregg-tutor.webp")       # gregg shorthand outline
+    asciify(src_wildfire(), C + r"\wildfire.webp")        # Canada + modelled fires
     asciify(src_eye(),     C + r"\eye.webp", cut=205)     # vision1 eye easter egg (1/100 wall tile)
     asciify(src_eye_closed(), C + r"\eye-closed.webp", cut=205)  # favicon blink (tab blur)
     # lissajous / discord / make-your-own: re-screen the original letter-ASCII art
