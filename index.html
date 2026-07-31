@@ -372,6 +372,20 @@
     z-index: 0;
     pointer-events: none;
   }
+  /* Below the stacking breakpoint the two columns become one and the section
+     grows from ~2300px to ~3700px — so the SAME 14% fade stops being a soft
+     edge and becomes ~515px of bare cream at each end, most of a phone screen
+     of nothing before the field starts (it only got going around the "CS &
+     Data Science" line). The fade never needed to scale with the section; it
+     just has to be long enough not to read as a cut. So on phones it's a fixed
+     distance, which puts the field at full strength by the eyebrow and hands
+     ~800px of covered height back. */
+  @media (max-width: 760px) {
+    .about-dither-wrap {
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 120px, #000 calc(100% - 120px), transparent 100%);
+      mask-image: linear-gradient(to bottom, transparent 0, #000 120px, #000 calc(100% - 120px), transparent 100%);
+    }
+  }
   /* the dither bitmap itself. It's taller than the section (JS sets top/height)
      so it can be translated for parallax without ever exposing an edge. Pixels,
      dither and smoke all live in this ONE bitmap, so they move together 1:1 —
