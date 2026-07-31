@@ -2572,6 +2572,9 @@
     document.head.appendChild(kf);
     let cols = 0, rows = 0, img = null, pad = 0, curT = 0, tConst = 0, secTopAbs = 0, baseConst = 0;
     let lastW = 0, lastVH = 0, pass = null, last = 0;
+    // full-fill progress (see sweepChunk); declared up here because resize()
+    // resets it and runs before the paint loop's own declarations.
+    let swept = 0, sweepFrom = 0;
     // live cell size — CONFIG.CELL on anything desktop-ish, finer on a phone.
     let cell = CONFIG.CELL;
 
@@ -2595,18 +2598,22 @@
       lastW = w; lastVH = vh;
       cell = cellPx();
       // The FIELD is the section plus whatever it bleeds up above it (the wrap
-      // is pulled up by the same --about-bleed in CSS, so this keeps the canvas
-      // and the window on it the same box). Every measurement below is the
-      // field's, not the section's — the section only anchors where it starts.
+      // is pulled up by the same --about-bleed in CSS, so the canvas and the
+      // window onto it stay the same box). Two heights from here on, and they
+      // are NOT interchangeable: fieldH sizes the bitmap, secH sets the motion.
+      // The view-timeline is declared on the SECTION, so its cover range is
+      // secH + viewport — measuring travel off fieldH instead would move the
+      // layer further than the timeline it's driven by, and the band-paint maths
+      // (which assumes a slope of exactly tSlope) would drift off the transform.
       const secH = about.clientHeight;
       const bleed = Math.max(0, parseFloat(getComputedStyle(about).getPropertyValue('--about-bleed')) || 0);
       const fieldH = secH + bleed;
       // Decide parallax-vs-flat FIRST — everything below depends on it. Parallax
-      // costs (1 - SPEED) × (field + viewport) of extra layer height on top of
+      // costs (1 - SPEED) × (section + viewport) of extra layer height on top of
       // the field itself; if that promoted layer would exceed what the GPU will
       // back (MAX_LAYER_PX device px), it renders partly blank, so take the flat
       // path instead. Losing a subtle depth cue beats losing half the field.
-      const wantTravel = Math.ceil((1 - CONFIG.SPEED) * (fieldH + vh) / 2);
+      const wantTravel = Math.ceil((1 - CONFIG.SPEED) * (secH + vh) / 2);
       const budget = window.matchMedia('(pointer: coarse)').matches
         ? CONFIG.MAX_LAYER_PX_TOUCH : CONFIG.MAX_LAYER_PX;
       flat = (fieldH + 2 * wantTravel) * dpr > budget;
@@ -2615,8 +2622,8 @@
       canvas.classList.toggle('flat', flat);
       if (flat) canvas.style.transform = '';     // nothing must re-promote the layer
       // over a full scroll-through the layer shifts by (1 - SPEED) ×
-      // (field + viewport); each side travels half of that. Flat = 0.
-      const travel = Math.ceil(tSlope * (fieldH + vh) / 2);
+      // (section + viewport); each side travels half of that. Flat = 0.
+      const travel = Math.ceil(tSlope * (secH + vh) / 2);
       // Oversize the layer by the travel — so translating it never exposes an
       // edge — plus slack for the URL-bar height wobble we deliberately ignore.
       pad = travel + Math.ceil(tSlope * VH_SLACK) + cell;
@@ -2629,13 +2636,15 @@
       canvas.width = cols; canvas.height = rows;
       img = ctx.createImageData(cols, rows);
       pass = null; last = 0;                    // buffer is fresh — repaint asap
-      // document-absolute top of the FIELD (the section's top, less the bleed).
-      // With it, the transform and the visible-band math are pure functions of
-      // window.scrollY — no layout-forcing rect reads anywhere in the animation
-      // loop.
-      secTopAbs = about.getBoundingClientRect().top + window.scrollY - bleed;
-      tConst = tSlope * (secTopAbs + fieldH / 2 - vh / 2);
-      baseConst = pad + tConst - secTopAbs;     // band: base = baseConst + scrollY·speed
+      swept = 0;                                // ...and empty, so re-cover it
+      // Document-absolute tops. With them, the transform and the visible-band
+      // maths are pure functions of window.scrollY — no layout-forcing rect
+      // reads anywhere in the animation loop. The transform is anchored to the
+      // SECTION (that's what the timeline tracks); the band is anchored to the
+      // FIELD, which starts `bleed` higher, because that's where row 0 lives.
+      secTopAbs = about.getBoundingClientRect().top + window.scrollY;
+      tConst = tSlope * (secTopAbs + secH / 2 - vh / 2);
+      baseConst = pad + tConst - (secTopAbs - bleed);  // base = baseConst + scrollY·speed
       // hand the travel to the compositor path as concrete-pixel keyframes
       kf.textContent = '@keyframes about-dither-parallax{from{transform:translateY(-'
         + travel + 'px)}to{transform:translateY(' + travel + 'px)}}';
@@ -2752,12 +2761,42 @@
     function startPass(now) {
       last = now;
       const vh = window.innerHeight, margin = vh * 0.4;
+      const cy = bandTop();
       // local-y of the top visible row — a pure function of scroll that matches
       // the layer's current translate (whether driven by CSS or the JS fallback).
       const base = baseConst + window.scrollY * speed;
-      const cy = Math.max(0, Math.floor((base - margin) / cell));
       const cyMax = Math.min(rows, Math.ceil((base + vh + margin) / cell));
       if (cyMax > cy) pass = { t: (now - start) / 1000 * CONFIG.FLOW * 20, cy, cyMax };
+    }
+    // first row of the band currently on screen (plus the same margin)
+    function bandTop() {
+      const base = baseConst + window.scrollY * speed;
+      const cy = Math.floor((base - window.innerHeight * 0.4) / cell);
+      return Math.max(0, Math.min(rows - 1, cy));
+    }
+    // ONE-TIME FULL FILL — coverage before animation.
+    // A row that has never been painted is TRANSPARENT, so an unfilled region
+    // isn't a stale frame, it's a hole with a hard edge across the field. The
+    // band painter alone leaves those behind: it only ever draws around the
+    // viewport, on a 6ms-per-frame budget, so a fast flick on a slow phone
+    // outruns it and the rows it skipped stay empty until you happen to scroll
+    // back through them slowly. (Reproducible at 20x CPU throttle; invisible on
+    // a desktop, where a whole band lands in a single frame.)
+    // So until every row has been painted once, the budget goes here instead of
+    // to the animation. It starts at whatever band is on screen when it first
+    // runs — landing mid-section has to fill what you're looking at first — and
+    // wraps around to cover the rest. Once covered, no scroll can expose a hole
+    // again; the worst it can show is a slightly older frame of something that
+    // drifts this slowly, which reads as nothing at all.
+    function sweepChunk(now) {
+      if (swept === 0) sweepFrom = bandTop();
+      const t = (now - start) / 1000 * CONFIG.FLOW * 20;
+      const deadline = performance.now() + CONFIG.BUDGET;
+      const from = (sweepFrom + swept) % rows;
+      let cy = from;
+      do { paintRow(cy++, t); swept++; }
+      while (swept < rows && cy < rows && performance.now() < deadline);
+      ctx.putImageData(img, 0, 0, 0, from, cols, cy - from);
     }
     // Paint as many rows as fit in BUDGET ms, then yield the frame. Fast
     // machines still land the whole band in one chunk; weak devices spread it
@@ -2799,8 +2838,13 @@
       else if (!cssDriven) setTransform();   // JS parallax fallback; CSS path is
                                              // handled on the compositor, no JS
       else if (cssCheck >= 0) verifyCssDriven();
-      if (!pass && now - last >= minDelta) startPass(now);  // stays FPS-capped
-      if (pass) paintChunk();
+      // Cover the whole field first, animate second — see sweepChunk. The
+      // animation can afford to wait a second; a hole in the field can't.
+      if (swept < rows) sweepChunk(now);
+      else {
+        if (!pass && now - last >= minDelta) startPass(now);  // stays FPS-capped
+        if (pass) paintChunk();
+      }
     }
     new IntersectionObserver((entries) => {
       const on = entries[0].isIntersecting;
@@ -2810,6 +2854,38 @@
       // it's observing — the margin has to clear that or the top of the bleed
       // scrolls into view before the paint loop has started.
     }, { rootMargin: '400px 0px' }).observe(about);
+
+    // ── ?dither-debug=1 ───────────────────────────────────────────────────
+    // On-screen readout of what the field thinks it's doing. "The pattern stops
+    // partway down" has two possible causes that look identical on a phone and
+    // neither reproduces on a desktop: the painter never covered those rows, or
+    // it did and the compositor isn't rasterising a layer that tall. FILL tells
+    // them apart — if it reads done and the screen still has a hole, the hole
+    // isn't the painter's. LAYER flags whether the canvas is even in the size
+    // range where WebKit gives up (~8192 device px a side).
+    if (/[?&]dither-debug=1\b/.test(location.search)) {
+      const box = document.createElement('div');
+      box.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9999;background:#000;color:#0f0;'
+        + 'font:11px/1.35 ui-monospace,monospace;padding:8px 10px;white-space:pre;pointer-events:none;'
+        + 'border-radius:4px;max-width:calc(100vw - 16px)';
+      document.body.appendChild(box);
+      let filledAt = 0;
+      setInterval(() => {
+        if (!filledAt && rows && swept >= rows) filledAt = Math.round(performance.now() - start);
+        const cssH = parseFloat(canvas.style.height) || 0;
+        box.textContent = [
+          'dpr ' + dpr + '  vp ' + innerWidth + 'x' + innerHeight + '  cell ' + cell,
+          'section ' + about.clientHeight + '  bleed ' + getComputedStyle(about).getPropertyValue('--about-bleed').trim(),
+          'flat ' + flat + '  speed ' + speed + '  css-driven ' + cssDriven,
+          'LAYER ' + Math.round(cssH) + 'css = ' + Math.round(cssH * dpr) + 'dev'
+            + (cssH * dpr > 8192 ? '  >8192 !' : '  ok'),
+          'buffer ' + cols + 'x' + rows,
+          'FILL ' + Math.min(swept, rows) + '/' + rows
+            + (rows && swept >= rows ? '  done @' + filledAt + 'ms' : '  ...'),
+          'running ' + running + '  scrollY ' + Math.round(scrollY),
+        ].join('\n');
+      }, 250);
+    }
   })();
   </script>
 
