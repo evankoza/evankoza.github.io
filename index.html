@@ -2584,6 +2584,9 @@
     // full-fill progress (see sweepChunk); declared up here because resize()
     // resets it and runs before the paint loop's own declarations.
     let swept = 0, sweepFrom = 0;
+    // last measured section height / bleed, kept so remeasure() can tell a mere
+    // reposition (cheap) from a real geometry change (full rebuild).
+    let secH = 0, bleed = 0;
     // live cell size — CONFIG.CELL on anything desktop-ish, finer on a phone.
     let cell = CONFIG.CELL;
 
@@ -2614,8 +2617,8 @@
       // secH + viewport — measuring travel off fieldH instead would move the
       // layer further than the timeline it's driven by, and the band-paint maths
       // (which assumes a slope of exactly tSlope) would drift off the transform.
-      const secH = about.clientHeight;
-      const bleed = Math.max(0, parseFloat(getComputedStyle(about).getPropertyValue('--about-bleed')) || 0);
+      secH = about.clientHeight;
+      bleed = Math.max(0, parseFloat(getComputedStyle(about).getPropertyValue('--about-bleed')) || 0);
       const fieldH = secH + bleed;
       // Decide parallax-vs-flat FIRST — everything below depends on it. Parallax
       // costs (1 - SPEED) × (section + viewport) of extra layer height on top of
@@ -2646,18 +2649,37 @@
       img = ctx.createImageData(cols, rows);
       pass = null; last = 0;                    // buffer is fresh — repaint asap
       swept = 0;                                // ...and empty, so re-cover it
-      // Document-absolute tops. With them, the transform and the visible-band
-      // maths are pure functions of window.scrollY — no layout-forcing rect
-      // reads anywhere in the animation loop. The transform is anchored to the
-      // SECTION (that's what the timeline tracks); the band is anchored to the
-      // FIELD, which starts `bleed` higher, because that's where row 0 lives.
-      secTopAbs = about.getBoundingClientRect().top + window.scrollY;
-      tConst = tSlope * (secTopAbs + secH / 2 - vh / 2);
-      baseConst = pad + tConst - (secTopAbs - bleed);  // base = baseConst + scrollY·speed
+      remeasure();
       // hand the travel to the compositor path as concrete-pixel keyframes
       kf.textContent = '@keyframes about-dither-parallax{from{transform:translateY(-'
         + travel + 'px)}to{transform:translateY(' + travel + 'px)}}';
       if (!cssDriven && !flat) setTransform();  // JS fallback positions it now
+    }
+
+    // WHERE THE SECTION IS. Everything scroll-driven — the transform and the
+    // visible-band maths — is derived from this one number so that the loop can
+    // be a pure function of window.scrollY, with no layout-forcing rect reads in
+    // it. The catch is that the number isn't stable at script time: the projects
+    // wall above builds after this script runs, and pushes the section down by
+    // ~1400px on a phone. Measured once and never revisited, the band then aims
+    // at rows that aren't on screen — the field still paints, just never where
+    // you're looking. That's what "the dither doesn't animate on mobile" was,
+    // and why it looked fine on desktop, where the drift is small enough that
+    // the band still overlaps the viewport.
+    // Cheap to redo — one rect read, no reallocation, no repaint. The bitmap is
+    // glued to the section, so moving the section doesn't invalidate a pixel of
+    // it; only the scroll→row mapping needs the new offset. If the section has
+    // actually changed SIZE, that's a different problem and needs the full
+    // rebuild instead.
+    function remeasure() {
+      if (about.clientHeight !== secH) { resize(); return; }
+      const vh = window.innerHeight;
+      // The transform is anchored to the SECTION (that's what the view-timeline
+      // tracks); the band is anchored to the FIELD, which starts `bleed` higher,
+      // because that's where row 0 lives.
+      secTopAbs = about.getBoundingClientRect().top + window.scrollY;
+      tConst = tSlope * (secTopAbs + secH / 2 - vh / 2);
+      baseConst = pad + tConst - (secTopAbs - bleed);  // base = baseConst + scrollY·speed
     }
 
     // JS FALLBACK only (browsers without scroll-driven animations). Derived from
@@ -2855,8 +2877,18 @@
         if (pass) paintChunk();
       }
     }
+    // Anything that can move the section down the document re-aims the band.
+    // The wall building is the big one (and it lands before you could have
+    // scrolled here), but late fonts and images shift things too, and body
+    // height is the one signal that catches all of them. remeasure() doesn't
+    // touch layout, so observing the body can't feed back into itself.
+    addEventListener('load', remeasure);
+    if (window.ResizeObserver) new ResizeObserver(remeasure).observe(document.body);
     new IntersectionObserver((entries) => {
       const on = entries[0].isIntersecting;
+      // ...and re-aim on the way in regardless, which costs one rect read per
+      // entry and makes the common case right even if every signal above missed.
+      if (on) remeasure();
       if (on && !running) { running = true; last = 0; raf = requestAnimationFrame(loop); }
       else if (!on && running) { running = false; cancelAnimationFrame(raf); }
       // 400px because the field now starts up to --about-bleed ABOVE the section
