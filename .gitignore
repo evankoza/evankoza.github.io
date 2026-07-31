@@ -12,3 +12,7 @@ __pycache__/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# The nightly wildfire refresh checks the model repo out here (see
+# .github/workflows/wildfire-refresh.yml). It is a whole second repo; never commit it.
+.wildfire/

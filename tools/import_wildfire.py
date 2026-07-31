@@ -32,13 +32,16 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import shutil
 import sys
 from pathlib import Path
 
 SITE = Path(__file__).resolve().parent.parent
-SRC = Path(r"C:\wildfire-forecast\docs\dashboard.html")
+# Defaults to the local clone; CI (see .github/workflows/wildfire-refresh.yml)
+# checks the repo out somewhere else and points this at it.
+SRC = Path(os.getenv("WILDFIRE_DASHBOARD", r"C:\wildfire-forecast\docs\dashboard.html"))
 OUT = SITE / "experiments" / "wildfire.html"
 IMG_DIR = SITE / "assets" / "wildfire"
 

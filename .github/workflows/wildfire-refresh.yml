@@ -1,0 +1,198 @@
+# Rebuild experiments/wildfire.html overnight so the dashboard's "fires burning
+# right now" stays true. It lives in THIS repo rather than in wildfire-forecast
+# so it can push with the built-in GITHUB_TOKEN; a workflow over there would
+# need a cross-repo PAT to write here.
+#
+# The shape of this job is dictated by one fact: the model trains on every
+# labelled season, so the curated tables must hold 2023-onward even though only
+# the current year changes overnight. Two of the three ingests rebuild their
+# curated table from exactly the years passed, so they get every year and lean
+# on cached raw responses to stay cheap; hotspots (the 535 MB one) instead uses
+# --merge to refresh a single season in place.
+name: wildfire dashboard refresh
+
+on:
+  schedule:
+    # 07:17 UTC = 3:17am EDT (2:17am EST -- GitHub cron has no DST, and the
+    # clock drifting an hour twice a year does not matter for an overnight job).
+    # Off the hour on purpose: scheduled runs queue behind everyone else's
+    # on-the-hour crons and are routinely delayed 10+ minutes at :00.
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      full_refresh:
+        description: "Re-ingest every season and refit the model (slow; needed to seed a cold cache)"
+        type: boolean
+        default: false
+
+# A slow run must never overlap the next night's, or two jobs race on the same
+# commit and one loses its push.
+concurrency:
+  group: wildfire-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  # Identify the job to the public services it hits, per .env.example.
+  WILDFIRE_USER_AGENT: "wildfire-forecast/0.1 (+https://evankoza.com/experiments/wildfire.html)"
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out the site
+        uses: actions/checkout@v4
+
+      - name: Check out the model
+        uses: actions/checkout@v4
+        with:
+          repository: evankoza/wildfire-forecast
+          path: .wildfire
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -e .wildfire
+
+      # What is cached, and what deliberately is not:
+      #   curated/            the whole point -- 2023+ parsed and ready (~142 MB)
+      #   models/             the fitted model predict() scores with (~3 MB)
+      #   raw/_http_cache.json  the ETag ledger, so warm runs get 304s
+      #   raw/ciffc/          ~140 files per season; without these, passing every
+      #                       year to ingest-ciffc means ~560 requests a night
+      #   raw/cwfis_reportedfires/  small (32 MB) and every year is re-passed
+      #   raw/cwfis_hotspots/*.csv  the current season's dailies (~110 MB)
+      # NOT cached: raw/cwfis_hotspots/*.zip -- 535 MB of closed-season archives
+      # that exist only to be parsed into curated once. --merge means a warm run
+      # never opens them, so caching them would quadruple transfer for nothing.
+      - name: Restore curated data
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .wildfire/data/curated
+            .wildfire/data/models
+            .wildfire/data/raw/_http_cache.json
+            .wildfire/data/raw/ciffc
+            .wildfire/data/raw/cwfis_reportedfires
+            .wildfire/data/raw/cwfis_hotspots/*.csv
+          key: wildfire-data-v1-${{ github.run_id }}
+          restore-keys: wildfire-data-v1-
+
+      # A cache miss must not silently become an unattended multi-year download
+      # against NRCan at 3am. Fail loudly and let a human start a full refresh.
+      - name: Require a warm cache unless a full refresh was asked for
+        if: inputs.full_refresh != true
+        run: |
+          missing=0
+          for f in .wildfire/data/curated/hotspots.parquet \
+                   .wildfire/data/curated/reported_fires.parquet \
+                   .wildfire/data/models/escalation_final.joblib; do
+            [ -f "$f" ] || { echo "missing: $f"; missing=1; }
+          done
+          if [ "$missing" = "1" ]; then
+            echo "::error::No warm cache (restored key: '${{ steps.cache.outputs.cache-matched-key }}')."
+            echo "::error::Re-run from the Actions tab with full_refresh checked to seed it."
+            exit 1
+          fi
+          echo "Warm cache restored from ${{ steps.cache.outputs.cache-matched-key }}"
+
+      - name: Ingest
+        id: ingest
+        working-directory: .wildfire
+        run: |
+          set -euo pipefail
+          # 2023 is the first season with usable bitemporal depth (see README).
+          YEARS=""
+          for y in $(seq 2023 "$(date -u +%Y)"); do YEARS="$YEARS -y $y"; done
+
+          # Fires and CIFFC rebuild their curated table from exactly the years
+          # given, so they always get all of them. Both are cheap on a warm
+          # cache: raw responses are on disk and conditional requests 304.
+          python -m wildfire ingest-fires $YEARS
+          python -m wildfire ingest-ciffc $YEARS
+
+          if [ "${{ inputs.full_refresh }}" = "true" ]; then
+            python -m wildfire ingest-hotspots $YEARS
+          else
+            # One season, merged into the others already curated.
+            python -m wildfire ingest-hotspots -y "$(date -u +%Y)" --merge
+          fi
+
+      - name: Build features
+        working-directory: .wildfire
+        run: python -m wildfire build
+
+      # Refit only on a full refresh. The final model changes when a season
+      # finishes and becomes labelled, not because today's fires moved, and
+      # refitting nightly would quietly shift every published score for a
+      # reason nobody could point at afterwards.
+      - name: Fit
+        if: inputs.full_refresh == true
+        working-directory: .wildfire
+        run: python -m wildfire fit-final
+
+      - name: Score and render
+        working-directory: .wildfire
+        run: |
+          set -euo pipefail
+          python -m wildfire predict
+          python -m wildfire dashboard
+
+      # Saved even if a later step fails, so one bad render does not cost the
+      # cache and force a cold re-ingest tomorrow night.
+      - name: Save curated data
+        if: always() && steps.ingest.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .wildfire/data/curated
+            .wildfire/data/models
+            .wildfire/data/raw/_http_cache.json
+            .wildfire/data/raw/ciffc
+            .wildfire/data/raw/cwfis_reportedfires
+            .wildfire/data/raw/cwfis_hotspots/*.csv
+          key: wildfire-data-v1-${{ github.run_id }}
+
+      - name: Re-skin for the web
+        env:
+          WILDFIRE_DASHBOARD: ${{ github.workspace }}/.wildfire/docs/dashboard.html
+        run: python tools/import_wildfire.py
+
+      # Never commit a page that did not regenerate, and never commit a
+      # truncated one. The importer targets ~180 KB; well outside that band
+      # means something upstream changed shape and a human should look.
+      - name: Sanity-check the page
+        run: |
+          set -euo pipefail
+          SIZE=$(stat -c%s experiments/wildfire.html)
+          echo "experiments/wildfire.html is $SIZE bytes"
+          if [ "$SIZE" -lt 120000 ] || [ "$SIZE" -gt 400000 ]; then
+            echo "::error::Unexpected size ($SIZE bytes); refusing to commit."
+            exit 1
+          fi
+          grep -o '"generated":"[^"]*"' experiments/wildfire.html | head -1 \
+            || { echo "::error::No generated stamp in the page; refusing to commit."; exit 1; }
+
+      - name: Commit
+        run: |
+          set -euo pipefail
+          git config user.name "Evan Koza"
+          git config user.email "184670498+evankoza@users.noreply.github.com"
+          git add experiments/wildfire.html assets/wildfire
+          if git diff --cached --quiet; then
+            echo "Dashboard is unchanged; nothing to commit."
+            exit 0
+          fi
+          STAMP=$(grep -o '"generated":"[^"]*"' experiments/wildfire.html | head -1 | cut -d'"' -f4)
+          git commit -m "Refresh the wildfire dashboard ($STAMP)" \
+                     -m "Automated by .github/workflows/wildfire-refresh.yml."
+          # Rebase onto anything pushed since checkout rather than failing the
+          # run; the only file this job touches is one nothing else writes.
+          git pull --rebase --autostash origin main
+          git push origin HEAD:main
