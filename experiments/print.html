@@ -116,16 +116,25 @@
   }
 
   /* ---- preview column ---- */
-  #previewCol { flex: 0 0 auto; }
+  /* min-width:0 so the 384px paper is allowed to shrink on a narrow phone
+     instead of pushing the whole page sideways */
+  #previewCol { flex: 0 1 auto; min-width: 0; max-width: 100%; }
   #paperWrap {
     background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
     padding: 16px 16px 24px; /* extra bottom room for the resize grip */
+    max-width: 100%;
   }
   #paper {
-    position: relative; width: 384px; background: #fdfdf8;
-    box-shadow: 0 6px 22px rgba(28, 27, 24, .18); touch-action: none;
+    position: relative; width: 384px; max-width: 100%; background: #fdfdf8;
+    box-shadow: 0 6px 22px rgba(28, 27, 24, .18);
+    /* Default pan-y: the paper is most of a phone screen, so a swipe over it
+       has to scroll the page. Only lock the gesture once there is something
+       to drag or paint (see .painting/.holding below). */
+    touch-action: pan-y;
   }
-  #paper canvas { display: block; width: 384px; image-rendering: pixelated; }
+  #paper.painting, #paper.holding { touch-action: none; }
+  #paper canvas { display: block; width: 100%; image-rendering: pixelated; }
+  /* Overlay boxes are sized in % of the canvas, so they track any CSS downscale */
   #overlay { position: absolute; inset: 0; }
   .selbox { position: absolute; border: 1.5px dashed var(--pumpkin-bright); pointer-events: none; }
   .selbox .handle {
@@ -188,10 +197,25 @@
     font-size: 15px; line-height: 1; border-radius: 4px;
   }
   .elItem .del:hover { color: #c92a2a; background: rgba(201,42,42,.10); }
+  /* ▲▼ reorder: the drag-and-drop path below is mouse-only (HTML5 DnD never
+     fires on touch), so these buttons are the only way to restack on a phone. */
+  .elItem .ord {
+    border: none; background: none; color: var(--ink-faint); padding: 2px 5px;
+    font-size: 11px; line-height: 1; border-radius: 4px;
+  }
+  .elItem .ord:hover:not(:disabled) { color: var(--pumpkin); background: rgba(201,80,0,.10); }
+  .elItem .ord:disabled { opacity: .28; cursor: default; }
   .elItem.dragging { opacity: .45; }
   .elItem.dropAbove { box-shadow: 0 -2px 0 var(--pumpkin); }
   .elItem.dropBelow { box-shadow: 0 2px 0 var(--pumpkin); }
   #layersHint { color: var(--ink-faint); font-size: 11px; margin: 2px 0 6px; }
+  /* Swap instructions by input type, not width — a small window with a mouse
+     should still be told to drag. */
+  .touchOnly { display: none; }
+  @media (hover: none) and (pointer: coarse) {
+    .mouseOnly { display: none; }
+    .touchOnly { display: inline; }
+  }
   #paperGrip {
     position: absolute; left: 0; right: 0; bottom: -18px; height: 18px;
     background: var(--paper); border: 1px solid var(--line); border-top: none;
@@ -206,6 +230,36 @@
   #offlineNote {
     font-size: 12px; color: var(--ink-faint); line-height: 1.45;
     margin-bottom: 10px;
+  }
+
+  /* ── phones ───────────────────────────────────────────────────
+     The paper is a real 384px printer bitmap, so the goal here is to give
+     back every pixel of page chrome we can and keep the downscale tiny
+     (390px viewport lands the canvas at ~366px = 95%, which still reads
+     crisply at dpr 2). Everything else is thumb sizing. */
+  @media (max-width: 560px) {
+    main { padding: 12px 10px 72px; gap: 14px; }
+    .topbar { padding: 16px 14px 8px; }
+    #paperWrap { padding: 8px 8px 22px; border-radius: 8px; }
+    #controls { min-width: 0; max-width: none; width: 100%; }
+    section { padding: 12px 12px; }
+
+  }
+
+  /* Thumb sizing keys off the *pointer*, not the width — a phone in landscape is
+     844px wide and still has no mouse, so a width query would skip it. */
+  @media (max-width: 560px), (hover: none) and (pointer: coarse) {
+    .row { gap: 10px; margin-bottom: 12px; }
+    .row input[type=range] { height: 30px; }
+    input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--pumpkin); }
+    select, input[type=text], input[type=number], textarea, button { font-size: 16px; }
+    /* 16px inputs also stop iOS Safari zooming the page on focus */
+    .elItem { padding: 9px 8px; gap: 6px; }
+    .elItem .del { padding: 8px 10px; font-size: 17px; }
+    .elItem .ord { padding: 8px 7px; font-size: 13px; }
+    .elItem .grip { display: none; }   /* DnD is mouse-only; ▲▼ replaces it */
+    .brushBtn { padding: 9px 14px; }
+    #paperGrip { bottom: -22px; height: 22px; line-height: 18px; }
   }
 </style>
 </head>
@@ -248,7 +302,7 @@
         <span style="flex:1"></span>
         <button id="fitHeight" title="Shrink/grow the paper to fit the content">Fit paper</button>
       </div>
-      <div id="layersHint">Layers — drag to reorder (top = printed on top)</div>
+      <div id="layersHint">Layers — <span class="mouseOnly">drag</span><span class="touchOnly">tap ▲▼</span> to reorder (top = printed on top)</div>
       <div id="elementList"></div>
     </section>
 

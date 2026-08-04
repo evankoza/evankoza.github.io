@@ -31,7 +31,9 @@
     -webkit-user-select:none;user-select:none;overflow:hidden;}
   #boardWrap{height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;}
   #board{position:relative;display:grid;background:var(--line-soft);
-    cursor:grab;touch-action:none;}
+    cursor:grab;touch-action:none;
+    /* long-press is our flag gesture, so stop iOS raising its own callout menu */
+    -webkit-touch-callout:none;}
   #board.drag{cursor:grabbing;}
   .cell{display:flex;align-items:center;justify-content:center;
     font-size:16px;font-weight:700;position:relative;overflow:hidden;}
@@ -75,7 +77,14 @@
   .hud .stat{display:flex;align-items:center;gap:5px;white-space:nowrap;}
   .hud .ic{color:var(--ink-faint);font-size:12px;}
   .hud b{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums;}
-  @media (max-width:560px){ .hud{gap:10px;font-size:10px;padding:5px 11px;} }
+  /* At 390px the full-width HUD ran straight over the ← Portfolio pill and made
+     the only escape hatch untappable. Drop to icons + numbers and hide the
+     eyebrow so both fit on one row. */
+  @media (max-width:560px){
+    .hud{gap:10px;font-size:10px;padding:5px 11px;}
+    .hud .lbl{display:none;}
+    .compile-chrome .eyebrow{display:none;}
+  }
 </style>
 </head>
 <body>
@@ -88,9 +97,9 @@
 </div>
 
 <div class="hud">
-  <span class="stat"><span class="ic">&#9671;</span> <b id="h-clear">0</b> cleared</span>
-  <span class="stat"><span class="ic">&#10007;</span> <b id="h-death">0</b> lost</span>
-  <span class="stat"><span class="ic">&#9873;</span> <b id="h-flag">0</b> flags</span>
+  <span class="stat"><span class="ic">&#9671;</span> <b id="h-clear">0</b> <span class="lbl">cleared</span></span>
+  <span class="stat"><span class="ic">&#10007;</span> <b id="h-death">0</b> <span class="lbl">lost</span></span>
+  <span class="stat"><span class="ic">&#9873;</span> <b id="h-flag">0</b> <span class="lbl">flags</span></span>
 </div>
 
 <script>
@@ -356,17 +365,34 @@ function updateHud(){
 }
 
 // ---- input ----
+// Mouse: left reveals, right flags. Touch has no right button, so a press held
+// still for LONGPRESS_MS flags instead — and then has to swallow the pointerup
+// that follows, or the cell would be flagged and immediately revealed.
+const LONGPRESS_MS = 400;
 let down=false, dragged=false, sx=0, sy=0, downEl=null;
+let pressTimer=null, flaggedThisPress=false;
+
+function cancelPress(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } }
+
 board.addEventListener("pointerdown",e=>{
   if(e.button!==0) return;
-  down=true; dragged=false; sx=e.clientX; sy=e.clientY;
+  down=true; dragged=false; flaggedThisPress=false; sx=e.clientX; sy=e.clientY;
   downEl=e.target.closest(".cell");
   try{ board.setPointerCapture(e.pointerId); }catch(_){}
+  cancelPress();
+  if(e.pointerType!=="mouse" && downEl){
+    pressTimer=setTimeout(()=>{
+      pressTimer=null;
+      if(dragged || !downEl) return;
+      flaggedThisPress=true;
+      toggleFlag(+downEl.dataset.x, +downEl.dataset.y);
+    }, LONGPRESS_MS);
+  }
 });
 board.addEventListener("pointermove",e=>{
   if(!down) return;
   const dx=e.clientX-sx, dy=e.clientY-sy;
-  if(!dragged && Math.hypot(dx,dy)>6){ dragged=true; board.classList.add("drag"); }
+  if(!dragged && Math.hypot(dx,dy)>6){ dragged=true; cancelPress(); board.classList.add("drag"); }
   if(dragged){
     const stepX = Math.round((e.clientX - sx)/CELL);
     const stepY = Math.round((e.clientY - sy)/CELL);
@@ -378,14 +404,24 @@ board.addEventListener("pointermove",e=>{
   }
 });
 board.addEventListener("pointerup",e=>{
+  cancelPress();
   if(e.button!==0){ down=false; return; }
   down=false; board.classList.remove("drag");
   if(dragged || !downEl) return;
+  if(flaggedThisPress){ flaggedThisPress=false; return; }  // long-press already flagged it
   userReveal(+downEl.dataset.x, +downEl.dataset.y);
+});
+board.addEventListener("pointercancel",()=>{
+  cancelPress(); down=false; board.classList.remove("drag");
 });
 board.addEventListener("contextmenu",e=>{
   e.preventDefault();
   const el=e.target.closest(".cell"); if(!el) return;
+  // Android fires contextmenu on long-press too; our own timer may have already
+  // flagged this cell, so don't toggle it straight back off
+  if(flaggedThisPress) return;
+  cancelPress();
+  flaggedThisPress=true;          // and keep the trailing pointerup from revealing
   toggleFlag(+el.dataset.x, +el.dataset.y);
 });
 window.addEventListener("keydown",e=>{

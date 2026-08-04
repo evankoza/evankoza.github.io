@@ -175,6 +175,15 @@
     .stat.sm .val{font-size:24px}
     footer{gap:16px;font-size:11px;bottom:20px}
   }
+  /* The config strip was 26px-high chips — too small for a thumb. Keyed on the
+     pointer, not the width: a phone in landscape is 844px and still has no
+     mouse, so the query above would skip it. */
+  @media (max-width:640px), (hover:none) and (pointer:coarse){
+    .cfg button{padding:9px 11px;font-size:13px}
+    .cfg .sep{height:20px}
+    a.nav{padding:9px 14px}
+    nav button{padding:9px 12px}
+  }
   /* touch: no hover cursor, drop keyboard-only footer hints */
   body.touch footer .kbd-only{display:none}
 </style>

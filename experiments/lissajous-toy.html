@@ -79,6 +79,17 @@
   .mini{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
   .mini button{padding:6px 11px;font-size:13px}
   .tiphint{color:var(--muted);font-size:12px;margin-top:2px}
+
+  /* thumb-sized controls on phones: the 16px range tracks, 30px swatch and
+     22px mini buttons were all under a comfortable touch target.
+     Must come after the base rules above — same specificity, later wins.
+     Keyed on the pointer too, so phone landscape (844px) isn't skipped. */
+  @media (max-width:560px), (hover:none) and (pointer:coarse){
+    .ctl input[type=range]{height:30px}
+    .ctl input[type=color]{width:48px;height:36px}
+    .mini button{padding:9px 13px;font-size:14px}
+    .toolbar button{padding:9px 13px}
+  }
 </style>
 </head>
 <body>

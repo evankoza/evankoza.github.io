@@ -85,6 +85,9 @@
     height: 100%;
     border-radius: 3px;
   }
+  /* the ink canvas owns the touch gesture — a drag on it is a pen stroke or a
+     loupe sweep, never a page scroll */
+  .page .ink { touch-action: none; }
   /* the printed invoice "content" sits below the ink canvas */
   .page .sheet { z-index: 1; }
   .page .ink   { z-index: 2; }
@@ -353,6 +356,106 @@
     background: rgba(201,80,0,0.35);
   }
   #scn-giveup:disabled { opacity: 0.35; cursor: default; }
+
+  /* magnifier toggle — the touch stand-in for "hold right-click". Hidden on
+     mouse, where the right button already does it. */
+  #loupeToggle {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 61;
+    display: none;
+    width: 46px;
+    height: 46px;
+    font-size: 20px;
+    line-height: 1;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(20,18,15,0.55);
+    backdrop-filter: blur(3px);
+    cursor: pointer;
+  }
+  #loupeToggle.on {
+    background: rgba(201,80,0,0.85);
+    border-color: #F2622E;
+  }
+  @media (hover: none) and (pointer: coarse) {
+    #loupeToggle { display: block; }
+  }
+
+  /* ── phones / narrow windows ──────────────────────────────────
+     The desktop layout hard-codes an 844px-wide pair (page 420 + gap + scanner
+     380) either side of centre, so below ~900px the invoice walks off the left
+     edge and the scanner off the right. Here the pair goes vertical instead:
+     invoice pinned top and scaled to fit by --pscale (set in JS, since it
+     depends on the live scanner height), scanner docked as a bottom bar. */
+  @media (max-width: 900px) {
+    /* 44px top strip left clear for the compile chrome + 🔍 button, so neither
+       sits on top of the invoice letterhead */
+    #stack {
+      top: 44px;
+      left: 50%;
+      transform: translateX(-50%) scale(var(--pscale, 1));
+      transform-origin: top center;
+    }
+    #scanner {
+      top: auto;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      width: auto;
+      transform: none;
+      border-radius: 14px 14px 0 0;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+    .scn-bar { margin-bottom: 8px; padding-bottom: 7px; }
+    .scn-clock b { font-size: 19px; }
+    .scn-title { display: none; }          /* the "⛟ RECEIVING" label is decoration */
+    .scn-screen {
+      height: auto;
+      min-height: 84px;
+      max-height: 34vh;                    /* bounds the tall intro text */
+      overflow-y: auto;
+      padding: 10px 12px;
+      justify-content: flex-start;
+    }
+    #scn-value { font-size: 21px; }
+    .scn-foot { margin-top: 8px; }
+    /* both footer buttons need a real thumb target */
+    #scn-next { padding: 12px 18px; font-size: 15px; }
+    #scn-giveup { padding: 12px 14px; font-size: 14px; }
+    /* dog-ears get bigger so they are hittable once the page is scaled down */
+    #corner, #corner-back { width: 84px; height: 84px; }
+  }
+
+  /* ── phone in landscape ───────────────────────────────────────
+     Stacking vertically is wrong when there is no vertical room: a docked
+     bottom bar plus a 545px page leaves the invoice a postage stamp. Go back
+     to side-by-side — invoice left, scanner as a right-hand column. */
+  @media (max-width: 900px) and (max-height: 560px) {
+    #stack {
+      top: 50%;
+      left: 8px;
+      transform: translateY(-50%) scale(var(--pscale, 1));
+      transform-origin: left center;
+    }
+    #scanner {
+      top: 0;
+      bottom: 0;
+      left: auto;
+      right: 0;
+      width: 296px;
+      transform: none;
+      border-radius: 14px 0 0 14px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .scn-screen { max-height: none; flex: 0 1 auto; }
+    /* the chrome owns the top-left, so the 🔍 moves to the bottom-left */
+    #loupeToggle { top: auto; bottom: 12px; right: auto; left: 12px; }
+  }
 </style>
 </head>
 <body oncontextmenu="return false">
@@ -376,6 +479,7 @@
   </div>
 
   <div id="loupe"><canvas id="loupe-canvas" width="240" height="240"></canvas></div>
+  <button id="loupeToggle" title="Magnifier — drag on the invoice to zoom" aria-pressed="false">🔍</button>
 
   <div id="scanner">
     <div class="scn-bar">
@@ -403,6 +507,8 @@
 
   const PAGE_W = 420, PAGE_H = 545;   // ~letter ratio (0.770) to match the invoice pages
   const NUM_PAGES = 11;
+  // touch device? decides which control scheme the how-to-play text describes
+  const COARSE = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
   const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
   const sheet = document.getElementById('sheet');
@@ -479,6 +585,60 @@
     pageEl.style.transform = 'rotate(' + currentAngle + 'deg)';
   }
 
+  // ---- Fitting the page on a phone --------------------------------------
+  // Below 900px the CSS stacks the invoice above a docked scanner and scales the
+  // stack by --pscale. The scanner's height is content-driven (the intro text is
+  // much taller than a scanned value), so the scale has to be measured, not
+  // guessed. Everything that maps screen->page coords goes through pageScale().
+  const stackEl = document.getElementById('stack');
+  const scannerEl = document.getElementById('scanner');
+  let _pscale = 1;
+  function pageScale() { return _pscale; }
+
+  // The page is tossed down at up to ±4°, so its on-screen footprint is the
+  // rotated bounding box, not PAGE_W × PAGE_H. Ignoring the h·sin term is what
+  // leaves a page hanging a few px off the edge.
+  const A = 4 * Math.PI / 180;
+  const FOOT_W = PAGE_W * Math.cos(A) + PAGE_H * Math.sin(A);
+  const FOOT_H = PAGE_W * Math.sin(A) + PAGE_H * Math.cos(A);
+
+  const MQ_NARROW    = window.matchMedia('(max-width: 900px)');
+  const MQ_LANDSCAPE = window.matchMedia('(max-width: 900px) and (max-height: 560px)');
+
+  // clientWidth, not innerWidth: innerWidth is the *visual* viewport, which a
+  // pinch-zoom or a mobile browser's page scale can shift away from the layout
+  // viewport that CSS positions #stack in. Height takes whichever is smaller so
+  // the page never hides behind browser chrome.
+  function viewport() {
+    const de = document.documentElement;
+    return { w: de.clientWidth, h: Math.min(window.innerHeight || 1e9, de.clientHeight) };
+  }
+
+  function fitPage() {
+    if (!MQ_NARROW.matches) {          // desktop pair, no scaling
+      _pscale = 1;
+      stackEl.style.removeProperty('--pscale');
+      return;
+    }
+    const vp = viewport();
+    let availW, availH;
+    if (MQ_LANDSCAPE.matches) {        // invoice left, scanner column right
+      availW = vp.w - scannerEl.offsetWidth - 20;
+      availH = vp.h - 12;
+    } else {                           // invoice top, scanner docked bottom
+      availW = vp.w - 20;
+      availH = vp.h - scannerEl.offsetHeight - 44 /* top strip */ - 14;
+    }
+    _pscale = Math.max(0.25, Math.min(1, availW / FOOT_W, availH / FOOT_H));
+    stackEl.style.setProperty('--pscale', _pscale.toFixed(4));
+  }
+  fitPage();
+  window.addEventListener('resize', fitPage);
+  window.addEventListener('orientationchange', fitPage);
+  // the scanner grows/shrinks as its screen content changes (intro -> value ->
+  // results), and each change moves the height budget for the page
+  if (window.ResizeObserver) new ResizeObserver(fitPage).observe(scannerEl);
+
   // ---- Timer (starts on first action) -----------------------------------
   const timerValEl = document.getElementById('timer-val');
   let startTime = null, timerInt = null, finished = false;
@@ -514,15 +674,16 @@
   let drawing = false;
   let last = null;
 
-  // Map a screen point into the (possibly rotated) page's local coordinates.
-  // The page is rendered at its natural 420x560 size, so 1 screen px = 1 page unit;
-  // we just need to rotate the pointer back by -currentAngle around the page center.
+  // Map a screen point into the (possibly rotated, possibly scaled) page's local
+  // coordinates: undo the mobile --pscale shrink, then rotate back by
+  // -currentAngle around the page center.
   function pagePos(e) {
     const r = ink.getBoundingClientRect();
     const cx = r.left + r.width / 2;      // bounding-box center == true center even when rotated
     const cy = r.top + r.height / 2;
-    const dx = e.clientX - cx;
-    const dy = e.clientY - cy;
+    const k = 1 / pageScale();
+    const dx = (e.clientX - cx) * k;
+    const dy = (e.clientY - cy) * k;
     const a = -currentAngle * Math.PI / 180;
     const rx = dx * Math.cos(a) - dy * Math.sin(a);
     const ry = dx * Math.sin(a) + dy * Math.cos(a);
@@ -541,10 +702,25 @@
     last = p;
   }
 
-  ink.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return;           // left only
+  function commitInk() {
+    const lctx = inkLayers[current].getContext('2d');
+    lctx.clearRect(0, 0, PAGE_W * DPR, PAGE_H * DPR);
+    lctx.drawImage(ink, 0, 0);
+  }
+
+  // pointer, not mouse: the same handlers then serve pen and finger
+  ink.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;           // primary only
+    // magnifier mode (the touch stand-in for holding right-click): sweep to zoom
+    if (magnifyMode) {
+      e.preventDefault();
+      ink.setPointerCapture(e.pointerId);
+      beginMagnify(e);
+      return;
+    }
     startTimer();
     drawing = true;
+    ink.setPointerCapture(e.pointerId);
     last = pagePos(e);
     // dot for a single click
     ictx.fillStyle = '#10367a';
@@ -553,7 +729,7 @@
     ictx.fill();
   });
 
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('pointermove', (e) => {
     if (drawing) {
       const p = pagePos(e);
       strokeTo(p);
@@ -565,18 +741,21 @@
     }
   });
 
-  window.addEventListener('mouseup', (e) => {
+  window.addEventListener('pointerup', (e) => {
+    if (magnifyMode && magnifying) { endMagnify(); return; }
     if (e.button === 0 && drawing) {
       drawing = false;
-      // persist this page's ink into its layer
-      const lctx = inkLayers[current].getContext('2d');
-      lctx.clearRect(0, 0, PAGE_W * DPR, PAGE_H * DPR);
-      lctx.drawImage(ink, 0, 0);
+      commitInk();   // persist this page's ink into its layer
     }
   });
+  window.addEventListener('pointercancel', () => {
+    if (magnifying && magnifyMode) endMagnify();
+    if (drawing) { drawing = false; commitInk(); }
+  });
 
-  // ---- Magnifier (right mouse held) -------------------------------------
-  let magnifying = false;
+  // ---- Magnifier (right mouse held, or the 🔍 toggle on touch) ----------
+  let magnifying = false;     // glass is currently up
+  let magnifyMode = false;    // touch: sweeping the invoice zooms instead of inks
   const ZOOM = 2.4;
   const LOUPE_R = 120; // half of 240
 
@@ -597,8 +776,19 @@
   let loupeSrc = null;
 
   function updateLoupe(e) {
-    loupe.style.left = e.clientX + 'px';
-    loupe.style.top  = e.clientY + 'px';
+    // A finger sits exactly where the glass would be, so lift the glass clear of
+    // it and keep it on-screen. A mouse cursor needs neither.
+    const touch = e.pointerType === 'touch' || e.pointerType === 'pen';
+    const half = LOUPE_R + 13;                       // radius + rim
+    let lx = e.clientX, ly = e.clientY - (touch ? LOUPE_R + 34 : 0);
+    if (touch) {
+      lx = Math.max(half, Math.min(window.innerWidth - half, lx));
+      // if there is no room above, drop it below the finger instead
+      if (ly < half) ly = e.clientY + LOUPE_R + 34;
+      ly = Math.max(half, Math.min(window.innerHeight - half, ly));
+    }
+    loupe.style.left = lx + 'px';
+    loupe.style.top  = ly + 'px';
 
     // position on the page in page-local coords (rotation-aware)
     const p = pagePos(e);
@@ -635,19 +825,28 @@
     );
   }
 
-  window.addEventListener('mousedown', (e) => {
-    if (e.button === 2) {                 // right button
-      magnifying = true;
-      loupeSrc = loupeSourceCanvas();
-      loupe.style.display = 'block';
-      updateLoupe(e);
-    }
-  });
-  window.addEventListener('mouseup', (e) => {
-    if (e.button === 2) {
-      magnifying = false;
-      loupe.style.display = 'none';
-    }
+  function beginMagnify(e) {
+    magnifying = true;
+    loupeSrc = loupeSourceCanvas();
+    loupe.style.display = 'block';
+    updateLoupe(e);
+  }
+  function endMagnify() {
+    magnifying = false;
+    loupe.style.display = 'none';
+  }
+
+  // mouse: hold the right button anywhere
+  window.addEventListener('mousedown', (e) => { if (e.button === 2) beginMagnify(e); });
+  window.addEventListener('mouseup',   (e) => { if (e.button === 2) endMagnify(); });
+
+  // touch: flip the 🔍 toggle, then sweep the invoice (see the ink pointerdown)
+  const loupeToggleEl = document.getElementById('loupeToggle');
+  loupeToggleEl.addEventListener('click', () => {
+    magnifyMode = !magnifyMode;
+    loupeToggleEl.classList.toggle('on', magnifyMode);
+    loupeToggleEl.setAttribute('aria-pressed', String(magnifyMode));
+    if (!magnifyMode) endMagnify();
   });
   // keep loupe live as ink changes while magnifying isn't typical; refresh on show
 
@@ -666,9 +865,9 @@
   }
   cornerEl.addEventListener('click', (e) => { e.stopPropagation(); turnPage(1); });
   cornerBackEl.addEventListener('click', (e) => { e.stopPropagation(); turnPage(-1); });
-  // block the corners from also starting a stroke
-  cornerEl.addEventListener('mousedown', (e) => e.stopPropagation());
-  cornerBackEl.addEventListener('mousedown', (e) => e.stopPropagation());
+  // block the corners from also starting a stroke (pointer covers finger + mouse)
+  cornerEl.addEventListener('pointerdown', (e) => e.stopPropagation());
+  cornerBackEl.addEventListener('pointerdown', (e) => e.stopPropagation());
 
   // ---- Receiving scanner feed -------------------------------------------
   // Every load is a fresh "shipment": 5 random line items DON'T ship, and the
@@ -723,8 +922,11 @@
         '<b>Goal:</b> the truck arrived short &mdash; your job is to figure out which items actually shipped and which never did. ' +
         'Each <b class="g">SCAN NEXT</b> reads back one received item by its UPC, article #, or description. ' +
         'Find it on the invoice and <b class="g">draw on the invoice</b> to note that it shipped.<br><br>' +
-        '<b class="g">Hold right-click</b> to magnify the fine print.<br>' +
-        '<b class="g">Click the corners</b> to switch pages.<br><br>' +
+        (COARSE
+          ? '<b class="g">Tap 🔍</b> then drag the invoice to magnify the fine print.<br>' +
+            '<b class="g">Tap the dog-eared corners</b> to switch pages.<br><br>'
+          : '<b class="g">Hold right-click</b> to magnify the fine print.<br>' +
+            '<b class="g">Click the corners</b> to switch pages.<br><br>') +
         '<b>' + MISSING_COUNT + ' items never scan</b> &mdash; those are the ones that didn\'t ship. Catch them before the clock beats you.' +
       '</div>';
     scnCount.textContent = '0 / ' + shippedTotal + ' scanned';

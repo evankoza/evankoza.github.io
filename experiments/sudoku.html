@@ -204,6 +204,64 @@
   .hud b { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
   .hud .keys b { color: var(--txt); }
   @media (max-width: 640px){ .hud .keys { display: none; } }
+
+  /* ── touch toolbar ────────────────────────────────────────────
+     The desktop scheme is left-button pencil / right-button eraser / hold-Space
+     zoom. A phone has none of those, so the three modes become explicit
+     buttons. Shown only where there is no mouse. */
+  #tools {
+    position: fixed;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    display: none;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--paper-line);
+    border-radius: 999px;
+    background: var(--panel);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+  }
+  #tools button {
+    width: 52px; height: 44px;
+    font-size: 19px; line-height: 1;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+  }
+  #tools button.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    filter: saturate(1.1);
+  }
+  @media (hover: none) and (pointer: coarse) {
+    #tools { display: flex; }
+  }
+
+  /* ── phones / narrow windows ──────────────────────────────────
+     The 460px page overflows a phone; scale it to fit and leave room for the
+     chrome strip above and the tool pill below. --pscale is set in JS. */
+  @media (max-width: 900px) {
+    #stack {
+      top: 44px;
+      left: 50%;
+      transform: translateX(-50%) scale(var(--pscale, 1));
+      transform-origin: top center;
+    }
+    /* hittable dog-ears once the page is scaled down */
+    #corner, #corner-back { width: 88px; height: 88px; }
+  }
+  /* landscape: no vertical room for a top strip, centre it instead */
+  @media (max-width: 900px) and (max-height: 560px) {
+    #stack {
+      top: 50%;
+      transform: translate(-50%, -50%) scale(var(--pscale, 1));
+      transform-origin: center;
+    }
+    #tools { bottom: 8px; left: auto; right: 10px; transform: none; flex-direction: column; }
+  }
 </style>
 </head>
 <body oncontextmenu="return false">
@@ -232,6 +290,12 @@
   </div>
 
   <div id="loupe"><canvas id="loupe-canvas" width="240" height="240"></canvas></div>
+
+  <div id="tools" role="group" aria-label="Tool">
+    <button id="t-pencil" class="on" title="Pencil" aria-pressed="true">&#9998;</button>
+    <button id="t-eraser" title="Eraser" aria-pressed="false">&#9003;</button>
+    <button id="t-zoom" title="Magnifier" aria-pressed="false">&#128269;</button>
+  </div>
 
 <script>
 (() => {
@@ -406,6 +470,53 @@
     hudIdx.textContent = current + 1;
   }
 
+  // ---- Fitting the page on a phone --------------------------------------
+  // Below 900px the CSS scales #stack by --pscale. The page is tossed at up to
+  // ±3.4°, so the footprint to fit is the rotated bounding box.
+  const stackEl = document.getElementById('stack');
+  const A = 3.5 * Math.PI / 180;
+  const FOOT_W = PAGE_W * Math.cos(A) + PAGE_H * Math.sin(A);
+  const FOOT_H = PAGE_W * Math.sin(A) + PAGE_H * Math.cos(A);
+  const MQ_NARROW    = window.matchMedia('(max-width: 900px)');
+  const MQ_LANDSCAPE = window.matchMedia('(max-width: 900px) and (max-height: 560px)');
+  let _pscale = 1;
+  function pageScale() { return _pscale; }
+
+  // clientWidth, not innerWidth: innerWidth is the *visual* viewport, which a
+  // pinch-zoom or a mobile browser's page scale can shift away from the layout
+  // viewport that CSS positions #stack in. Height takes whichever is smaller so
+  // the page never hides behind browser chrome.
+  function viewport() {
+    const de = document.documentElement;
+    return { w: de.clientWidth, h: Math.min(window.innerHeight || 1e9, de.clientHeight) };
+  }
+
+  function fitPage() {
+    if (!MQ_NARROW.matches) {
+      _pscale = 1;
+      stackEl.style.removeProperty('--pscale');
+      return;
+    }
+    const vp = viewport();
+    const availW = vp.w - 20;
+    // portrait keeps a 44px chrome strip up top and room for the tool pill below
+    const TOP = 44, BOTTOM = 68;
+    const availH = MQ_LANDSCAPE.matches ? vp.h - 16 : vp.h - TOP - BOTTOM;
+    _pscale = Math.max(0.25, Math.min(1, availW / FOOT_W, availH / FOOT_H));
+    stackEl.style.setProperty('--pscale', _pscale.toFixed(4));
+    // width is usually the binding constraint, which leaves slack below the
+    // sheet — centre it in the band rather than letting it hug the chrome
+    if (!MQ_LANDSCAPE.matches) {
+      const slack = Math.max(0, availH - PAGE_H * _pscale);
+      stackEl.style.top = (TOP + slack / 2) + 'px';
+    } else {
+      stackEl.style.removeProperty('top');
+    }
+  }
+  fitPage();
+  window.addEventListener('resize', fitPage);
+  window.addEventListener('orientationchange', fitPage);
+
   // ---- Ink persistence: keep pencil marks through a refresh (per day) ---
   const INK_KEY = 'daily-sudoku-ink-' + DAY;
   function saveInk() {
@@ -439,15 +550,21 @@
   }
 
   // ---- Drawing (pointer: mouse / pen / touch) --------------------------
-  // left button = pencil, right button = eraser
+  // left button = pencil, right button = eraser.
+  // On touch there is no second button and no Space key, so #tools sets
+  // touchTool ('pencil' | 'eraser' | 'zoom') and that decides what a drag does.
   let mode = 'pencil';
+  let touchTool = null, zoomPointer = null;
   let drawing = false, last = null, activePointer = null;
   let lastClientX = window.innerWidth / 2, lastClientY = window.innerHeight / 2;
 
+  // screen point -> page-local coords: undo the mobile --pscale shrink, then
+  // rotate back by -currentAngle around the page center
   function pagePos(e) {
     const r = ink.getBoundingClientRect();
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    const dx = e.clientX - cx, dy = e.clientY - cy;
+    const k = 1 / pageScale();
+    const dx = (e.clientX - cx) * k, dy = (e.clientY - cy) * k;
     const a = -currentAngle * Math.PI / 180;
     const rx = dx * Math.cos(a) - dy * Math.sin(a);
     const ry = dx * Math.sin(a) + dy * Math.cos(a);
@@ -481,7 +598,18 @@
 
   ink.addEventListener('pointerdown', (e) => {
     if (drawing) return;
-    if (e.button === 0) mode = 'pencil';
+    // touch toolbar wins when it is showing: a finger has no second button
+    if (e.button === 0 && touchTool) {
+      if (touchTool === 'zoom') {             // sweep to magnify, don't mark
+        e.preventDefault();
+        ink.setPointerCapture(e.pointerId);
+        zoomPointer = e.pointerId;
+        startZoom(e);
+        return;
+      }
+      mode = touchTool;                       // 'pencil' | 'eraser'
+    }
+    else if (e.button === 0) mode = 'pencil';
     else if (e.button === 2) mode = 'eraser';
     else return;                              // ignore middle/other buttons
     drawing = true; activePointer = e.pointerId;
@@ -509,6 +637,7 @@
     }
   });
   function endStroke(e) {
+    if (zoomPointer !== null && e.pointerId === zoomPointer) { stopZoom(); return; }
     if (drawing && e.pointerId === activePointer) {
       drawing = false; activePointer = null;
       ictx.globalCompositeOperation = 'source-over';
@@ -543,8 +672,18 @@
     _lctx.drawImage(loupeSrc, sx, sy, srcSize * f, srcSize * f, 0, 0, 240, 240);
   }
   function updateLoupe(e) {
-    loupe.style.left = e.clientX + 'px';
-    loupe.style.top  = e.clientY + 'px';
+    // a finger sits where the glass wants to be, so lift the glass above it and
+    // keep it on-screen; a mouse cursor needs neither
+    const touch = e.pointerType === 'touch' || e.pointerType === 'pen';
+    const half = LOUPE_R + 13;                       // radius + rim
+    let lx = e.clientX, ly = e.clientY - (touch ? LOUPE_R + 34 : 0);
+    if (touch) {
+      lx = Math.max(half, Math.min(window.innerWidth - half, lx));
+      if (ly < half) ly = e.clientY + LOUPE_R + 34;  // no room above: go below
+      ly = Math.max(half, Math.min(window.innerHeight - half, ly));
+    }
+    loupe.style.left = lx + 'px';
+    loupe.style.top  = ly + 'px';
     const p = pagePos(e), px = p.x, py = p.y;
     const overPaper = px >= 0 && px <= PAGE_W && py >= 0 && py <= PAGE_H;
     if (overPaper && loupeSrc) {
@@ -556,17 +695,38 @@
       loupe.style.backgroundColor = 'rgba(245,241,230,0.55)';
     }
   }
-  function startZoom() {
+  function startZoom(e) {
     if (magnifying) return;
     magnifying = true;
     loupeSrc = loupeSourceCanvas();
     loupe.style.display = 'block';
-    updateLoupe({ clientX: lastClientX, clientY: lastClientY });
+    updateLoupe(e || { clientX: lastClientX, clientY: lastClientY });
   }
   function stopZoom() {
     magnifying = false;
+    zoomPointer = null;
     loupe.style.display = 'none';
   }
+
+  // ---- Touch toolbar ----------------------------------------------------
+  const toolBtns = {
+    pencil: document.getElementById('t-pencil'),
+    eraser: document.getElementById('t-eraser'),
+    zoom:   document.getElementById('t-zoom'),
+  };
+  function setTool(name) {
+    touchTool = name;
+    for (const [k, b] of Object.entries(toolBtns)) {
+      b.classList.toggle('on', k === name);
+      b.setAttribute('aria-pressed', String(k === name));
+    }
+    if (name !== 'zoom') stopZoom();
+  }
+  for (const [name, b] of Object.entries(toolBtns)) {
+    b.addEventListener('click', () => setTool(name));
+  }
+  // only claim the pointer scheme where the toolbar is actually visible
+  if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) setTool('pencil');
 
   // ---- Flipping through the stack --------------------------------------
   function turnPage(dir) {

@@ -125,6 +125,14 @@
     .efm-graph{height:240px;flex:none}
     .efm-controls{gap:18px}
   }
+  /* The 20px zoom steppers and the brand button were sub-thumb targets. Keyed on
+     the pointer, not the width: a phone in landscape is 844px and still has no
+     mouse, so the query above would skip it. */
+  @media (max-width:560px), (hover:none) and (pointer:coarse){
+    #efm-zoom-in,#efm-zoom-out{min-width:34px;min-height:34px}
+    .efm-brand{padding:8px 4px}
+    .note a{padding:3px 0;display:inline-block}
+  }
 </style>
 </head>
 <body>

@@ -261,11 +261,20 @@ let latestBits = null;
 function drawSelection() {
   overlay.innerHTML = '';
   paper.classList.toggle('painting', !!selected && selected.type === 'draw');
+  // Something is selected, so a drag on the paper means "move it" — take the
+  // touch gesture. With nothing selected the paper stays scrollable, which
+  // matters because it fills most of a phone screen.
+  paper.classList.toggle('holding', !!selected);
   if (!selected || selected.type === 'draw') return;   // draw layer: paint, no box
   const b = elBounds(selected);
   const box = document.createElement('div');
   box.className = 'selbox';
-  box.style.cssText = `left:${b.x - 2}px; top:${b.y - 2}px; width:${b.w + 4}px; height:${b.h + 4}px;`;
+  // Percentages, not px: the paper is CSS-downscaled on narrow screens, and a
+  // px box laid out in canvas coordinates would drift off the element.
+  const pc = (v, total) => (v / total * 100).toFixed(4) + '%';
+  box.style.cssText =
+    `left:${pc(b.x - 2, W)}; top:${pc(b.y - 2, paperH)}; ` +
+    `width:${pc(b.w + 4, W)}; height:${pc(b.h + 4, paperH)};`;
   if (selected.type === 'image') {
     const h = document.createElement('div');
     h.className = 'handle';
@@ -292,7 +301,10 @@ function refreshElementList() {
       : el.type === 'draw'
       ? `✏️ ${el.name || 'drawing'}`
       : `🖼 ${el.name || 'image'}`;
-    item.innerHTML = `<span class="grip">⠿</span><span class="name"></span><button class="del" title="Delete layer">✕</button>`;
+    item.innerHTML = `<span class="grip">⠿</span><span class="name"></span>` +
+      `<button class="ord up" title="Move up">▲</button>` +
+      `<button class="ord down" title="Move down">▼</button>` +
+      `<button class="del" title="Delete layer">✕</button>`;
     item.querySelector('.name').textContent = label;
     item.addEventListener('click', () => select(el));
     item.querySelector('.del').addEventListener('click', e => {
@@ -301,6 +313,21 @@ function refreshElementList() {
       if (selected === el) { selected = null; refreshPropsPanel(); }
       refreshElementList(); render();
     });
+
+    // ▲▼ reorder. The list is top-layer-first, so "up" in the list means a
+    // *higher* array index. These are the touch path — HTML5 DnD below never
+    // fires on a phone.
+    const upBtn = item.querySelector('.ord.up');
+    const downBtn = item.querySelector('.ord.down');
+    upBtn.disabled = (i === elements.length - 1);
+    downBtn.disabled = (i === 0);
+    const nudge = (from, to) => e => {
+      e.stopPropagation();
+      elements.splice(to, 0, elements.splice(from, 1)[0]);
+      refreshElementList(); render();
+    };
+    upBtn.addEventListener('click', nudge(i, i + 1));
+    downBtn.addEventListener('click', nudge(i, i - 1));
 
     item.addEventListener('dragstart', e => {
       e.dataTransfer.effectAllowed = 'move';
@@ -460,8 +487,8 @@ $('fitHeight').addEventListener('click', fitPaper);
 $('paperGrip').addEventListener('pointerdown', e => {
   e.preventDefault();
   $('paperGrip').setPointerCapture(e.pointerId);
-  const startH = paperH, sy = e.clientY;
-  const move = ev => setPaperH(startH + (ev.clientY - sy));
+  const startH = paperH, sy = e.clientY, k = 1 / paperScale();
+  const move = ev => setPaperH(startH + (ev.clientY - sy) * k);
   const up = ev => {
     $('paperGrip').releasePointerCapture(e.pointerId);
     $('paperGrip').removeEventListener('pointermove', move);
@@ -480,6 +507,11 @@ let paintStroke = null;
 function paperXY(e) {
   const r = paper.getBoundingClientRect();
   return { x: (e.clientX - r.left) * (W / r.width), y: (e.clientY - r.top) * (paperH / r.height) };
+}
+// CSS px per canvas px — 1 on desktop, <1 once a phone shrinks the paper
+function paperScale() {
+  const w = paper.getBoundingClientRect().width;
+  return w > 0 ? w / W : 1;
 }
 
 function applyBrush(el) {
@@ -556,9 +588,9 @@ function startResize(e) {
   e.stopPropagation();
   const el = selected;
   if (!el || el.type !== 'image') return;
-  const startW = el.w, sx = e.clientX;
+  const startW = el.w, sx = e.clientX, k = 1 / paperScale();
   const move = ev => {
-    el.w = Math.max(8, Math.round(startW + (ev.clientX - sx)));
+    el.w = Math.max(8, Math.round(startW + (ev.clientX - sx) * k));
     el.h = Math.max(4, Math.round(el.w / el.aspect));
     refreshPropsPanel(); render();
   };

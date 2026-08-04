@@ -337,6 +337,33 @@
   /* hidden file inputs trigger via labels/buttons */
   input[type="file"] { display: none; }
   label.btn { display: inline-block; }
+
+  /* instructions follow the input type, not the width — a small window with a
+     mouse still hovers */
+  .touchOnly { display: none; }
+  @media (hover: none) and (pointer: coarse) {
+    .mouseOnly { display: none; }
+    .touchOnly { display: inline; }
+  }
+
+  /* ── touch sizing ─────────────────────────────────────────────
+     This panel is wall-to-wall sliders and 26px chips; on a phone every one of
+     them was a sub-thumb target. Sizes only — no layout change. Keyed on the
+     pointer as well as the width, or a phone in landscape (844px) is skipped. */
+  @media (max-width: 560px), (hover: none) and (pointer: coarse) {
+    .btn { padding: 10px 15px; font-size: 14px; }
+    .btn.sm { padding: 8px 12px; font-size: 13px; }
+    .btnrow { gap: 10px; }
+    input[type="range"] { height: 30px; }
+    input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--pumpkin); }
+    textarea { font-size: 16px; }   /* 16px stops iOS zooming the page on focus */
+    .curve { padding: 12px; }
+    .curve-head { gap: 10px; }
+    .curve-head input[type="color"] { width: 40px; height: 34px; }
+    .curve-head .x { width: 34px; height: 34px; font-size: 18px; }
+    .curve .mir { font-size: 13px; padding: 4px 0; }
+    .thumb .x { width: 26px; height: 26px; font-size: 15px; top: -4px; right: -4px; }
+  }
 </style>
 </head>
 <body>
@@ -366,7 +393,10 @@
           <section class="curves" id="curves" aria-label="curves"></section>
         </div>
       </div>
-      <p class="stage-hint">hover a curve to spin it · click to select &amp; edit</p>
+      <p class="stage-hint">
+        <span class="mouseOnly">hover a curve to spin it · click to select &amp; edit</span>
+        <span class="touchOnly">tap a curve to spin it &amp; edit</span>
+      </p>
     </div>
 
     <!-- the controls -->
