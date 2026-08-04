@@ -11,13 +11,15 @@
 # --merge to refresh a single season in place.
 name: wildfire dashboard refresh
 
+# THE SCHEDULE IS OFF, AND THIS JOB CANNOT WORK FROM GITHUB. CIFFC's API
+# answers 403 to GitHub's runner IPs; the identical request returns 200 from a
+# Canadian residential connection, and so does one with no User-Agent at all, so
+# it is an IP block rather than anything we send. Each new day is a fresh sitrep
+# request, so caching does not rescue it either. The nightly refresh now runs on
+# the home server: see ops/wildfire-refresh/. This file stays, dispatch-only,
+# because the comments below record why each step is shaped the way it is, and
+# because the day CIFFC allows cloud IPs this is most of the way back.
 on:
-  schedule:
-    # 07:17 UTC = 3:17am EDT (2:17am EST -- GitHub cron has no DST, and the
-    # clock drifting an hour twice a year does not matter for an overnight job).
-    # Off the hour on purpose: scheduled runs queue behind everyone else's
-    # on-the-hour crons and are routinely delayed 10+ minutes at :00.
-    - cron: "17 7 * * *"
   workflow_dispatch:
     inputs:
       full_refresh:

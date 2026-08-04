@@ -1,0 +1,23 @@
+services:
+  refresh:
+    build:
+      context: .
+    image: wildfire-refresh:latest
+    container_name: wildfire-refresh
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # CIFFC and NRCan are public-good services; identify the job to them.
+      WILDFIRE_USER_AGENT: "wildfire-forecast/0.1 (+https://evankoza.com/experiments/wildfire.html)"
+      WILDFIRE_DATA_DIR: /data/wildfire
+      TZ: "${TZ:-America/Toronto}"
+      RUN_AT: "${RUN_AT:-03:17}"
+    volumes:
+      # Everything that must survive a rebuild: the curated tables (~142 MB),
+      # the fitted models, the raw response cache that keeps warm runs at 304s,
+      # and the site clone. Losing this volume means a full re-seed.
+      - wildfire-data:/data
+    # No ports. Nothing here serves; it writes to a git repo and exits.
+
+volumes:
+  wildfire-data:

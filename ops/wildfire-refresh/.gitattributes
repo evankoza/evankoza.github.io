@@ -1,0 +1,5 @@
+# These are authored on Windows and run in a Linux container. A CRLF in a
+# shebang line makes the kernel look for an interpreter called "bash\r", which
+# fails as "no such file or directory" and sends you hunting for a missing bash.
+*.sh text eol=lf
+Dockerfile text eol=lf
