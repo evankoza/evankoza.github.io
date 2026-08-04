@@ -47,12 +47,15 @@ IMG_DIR = SITE / "assets" / "wildfire"
 
 CANONICAL = "https://evankoza.com/experiments/wildfire.html"
 TITLE = "Wildfire Escalation Watch \u2014 forecasting which Canadian fires blow up"
-DESC = ("A model that reads a new Canadian wildfire 24 hours after it is reported "
-        "and estimates the chance it passes 100 hectares. Live map, ranked "
-        "watchlist, and the season- and region-blocked backtests behind it.")
+DESC = ("Two models on Canada's open fire feeds: which newly reported fire will "
+        "pass 100 hectares, and where a fire is likely to start today. Live map, "
+        "ranked watchlist, and the season- and region-blocked backtests behind them.")
 
 # Chart order matches CHART_META in the generator; these names become filenames.
-CHART_NAMES = ["regions", "pr-curve", "calibration", "importance"]
+CHART_NAMES = [
+    "regions", "pr-curve", "calibration", "importance",
+    "ignition-regions", "ignition-calibration",
+]
 
 HEAD = f"""<!DOCTYPE html>
 <!--
@@ -143,9 +146,10 @@ BAR_HTML = """
   <div>
     <span class="pf-eyebrow"><span class="pf-prompt">~ $</span> ./wildfire dashboard</span>
     <p class="pf-sub">
-      A dated snapshot, not a live feed&hellip; the model scores every fire
-      Canada reported in the previous three weeks and the page bakes the answer
-      in. For what is burning right now, use the CWFIS map linked at the bottom.
+      A dated snapshot, not a live feed&hellip; the models score every fire
+      Canada reported in the previous three weeks, and every 10&thinsp;km cell
+      of ground for one day, and the page bakes both answers in. For what is
+      burning right now, use the CWFIS map linked at the bottom.
     </p>
   </div>
   <div class="pf-links">

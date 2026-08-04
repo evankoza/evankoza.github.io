@@ -2980,12 +2980,12 @@
     const PROJECTS = [
       {
         label: "Wildfire Forecast",
-        title: "Canadian Wildfire Escalation Forecast",
-        lead: "A model that reads a brand-new wildfire 24 hours after Canada first reports it, and estimates the odds it passes 100 hectares. The hard part isn't the model… it's making sure it only ever sees what was actually known at the time.",
-        description: "A fire enters the national reporting feed and 24 hours later the model asks one question: will this be a large fire, 100 hectares or more, three days after it was first reported? It pulls open government data with no API keys at all: every reported fire and its full revision history from NRCan’s GeoServer, satellite hotspots that already carry Canadian fire-behaviour outputs, and CIFFC’s national preparedness level. The whole thing hangs on the feed being bitemporal… every fire carries many revisions, each stamped with the window it was believed in, so “what was known at 24 hours” is a filter rather than a reconstruction.",
-        hardPart: "Two things that had nothing to do with wildfires. Weighting the rare escalation class helped the trees find it and wrecked the calibration doing it: a Brier score of 0.0246 lost to simply predicting the base rate, and the top risk bucket promised 16.9% where 10.1% actually escalated. PR-AUC never noticed, which is the lesson. The second one made the score itself a liar… LightGBM’s row subsampling and the calibration tie break both read raw row position, so the same fires in a different physical order scored anywhere from 0.258 to 0.296, a wider spread than any real feature in the project. Fixing that exposed DuckDB underneath, reducing float sums in whatever order its threads happen to finish. Both are pinned now, with tests that fail if either comes back.",
-        objective: "Build a forecast that survives the checks that usually kill one: hold out a whole season, hold out a whole province, and score every result against the only baseline that matters… how big the fire already is.",
-        stack: ["Python", "LightGBM", "Polars / DuckDB", "Parquet", "WFS / OGC", "Matplotlib"],
+        title: "Canadian Wildfire Risk Forecast",
+        lead: "Two models on Canada’s open fire feeds: which brand-new wildfire will pass 100 hectares, and where a fire is likely to start today. The hard part isn’t either model… it’s making sure they only ever see what was actually known at the time.",
+        description: "The first model reads a fire 24 hours after Canada first reports it and asks whether it will be a large fire, 100 hectares or more, three days later. The second asks the question a step earlier: standing at midnight over a 10 km cell of ground, will a new fire be reported there today? Both run on open government data with no API keys at all: every reported fire and its full revision history from NRCan’s GeoServer, satellite hotspots that already carry Canadian fire-behaviour outputs, noon weather and Fire Weather Index readings from 2,250 stations, and CIFFC’s national preparedness level. The whole thing hangs on the fire feed being bitemporal… every fire carries many revisions, each stamped with the window it was believed in, so “what was known at 24 hours” is a filter rather than a reconstruction.",
+        hardPart: "Three times, a number I trusted turned out to be a lie, and every time it looked perfectly plausible. Weighting the rare escalation class helped the trees find it and wrecked the calibration doing it: a Brier score of 0.0246 lost to simply predicting the base rate, and the top risk bucket promised 16.9% where 10.1% actually escalated. PR-AUC never noticed, which is the lesson. Then the score itself became a liar… LightGBM’s row subsampling and the calibration tie break both read raw row position, so the same fires in a different physical order scored anywhere from 0.258 to 0.296, a wider spread than any real feature in the project, and fixing that exposed DuckDB underneath reducing float sums in whatever order its threads finish. The third was in the second model: the satellite feed covers North America, not Canada, so two fifths of the grid cells I was scoring sat in the United States where a Canadian fire report cannot happen. All three are pinned now, with tests that fail if any comes back.",
+        objective: "Build forecasts that survive the checks that usually kill one: hold out a whole season, hold out a whole province, and score every result against a baseline someone already has… how big the fire is already, or the fire weather map on the wall.",
+        stack: ["Python", "LightGBM", "Polars / DuckDB", "FastAPI", "WFS / OGC", "Matplotlib"],
         links: [
           // Keep this short. In the picks strip the primary shares a row with
           // "Details →", and the tightest 3-up card (just above the 980px
@@ -2997,7 +2997,7 @@
         photos: [],
         cover: "assets/covers/wildfire.webp",
         coverRaw: true,
-        pick: "The one that had to be honest to be worth anything. It scores fires that are burning right now, so I checked it the hard way… hold out a season, hold out a whole province, and it still beats the baseline.",
+        pick: "The one that had to be honest to be worth anything. It scores fires that are burning right now, so I checked it the hard way… hold out a season, hold out a whole province, and both models still beat the baseline.",
         pickPoints: ["Scores real fires", "Zero API keys", "Backtested two ways"],
       },
       {
