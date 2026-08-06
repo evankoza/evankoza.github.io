@@ -580,6 +580,23 @@
 
   .edu-item { margin-bottom: 16px; }
   .edu-item:last-child { margin-bottom: 0; }
+  /* the resume's coursework line. Sits under the degree as a quieter footnote —
+     it's supporting detail, so it must never compete with the degree itself. */
+  .edu-course {
+    font-size: 0.85rem;
+    color: var(--ink-muted);
+    line-height: 1.5;
+    margin-top: 12px;
+  }
+  .edu-course-h {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 4px;
+  }
   .edu-deg { font-weight: 600; font-size: 0.95rem; line-height: 1.3; }
   .edu-school { font-size: 0.88rem; color: var(--ink-muted); }
   .edu-when {
@@ -662,6 +679,20 @@
     font-weight: 700;
   }
   .xp-list li strong { color: var(--ink); font-weight: 600; }
+
+  /* SKILLS — the resume's three grouped rows. Deliberately NOT an .xp: it has
+     no date and no timeline dot, so the pumpkin rule and its bullet would be
+     claiming a point in time that doesn't exist. Plain rows, shared .chip. */
+  .skill-row { margin-bottom: 22px; }
+  .skill-row:last-child { margin-bottom: 0; }
+  .skill-h {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 10px;
+  }
 
   /* highlighted project callout */
   .project {
@@ -1629,15 +1660,15 @@
         <div class="meta-block">
           <p class="meta-h">Education</p>
           <div class="edu-item">
-            <div class="edu-deg">Honours BSc, Computer Science</div>
-            <div class="edu-school">Western University</div>
+            <div class="edu-deg">Honours BSc, Computer Science &amp; Data Science</div>
+            <div class="edu-school">Western University &middot; double major, Co-op</div>
             <div class="edu-when">Expected 2028</div>
           </div>
-          <div class="edu-item">
-            <div class="edu-deg">Honours BSc, Data Science</div>
-            <div class="edu-school">Western University</div>
-            <div class="edu-when">Expected 2028</div>
-          </div>
+          <p class="edu-course">
+            <span class="edu-course-h">Coursework</span>
+            Data Structures &amp; Algorithms, Discrete Structures,
+            Computer Architecture, Probability &amp; Statistics
+          </p>
         </div>
       </aside>
 
@@ -1653,29 +1684,29 @@
           </div>
           <div class="xp-org">Digits Rehab Inc. &middot; London, ON</div>
           <ul class="xp-list">
-            <li>Build user-facing features for the rehab platform, including a <strong>guided progression flow</strong> that walks elderly patients through their exercises one step at a time.</li>
-            <li>Designed and shipped the company&rsquo;s <strong>new landing page</strong>.</li>
+            <li>Built the company&rsquo;s <strong>Range of Motion (ROM) API</strong> end to end: capture endpoints, a research console with filtering and CSV/PDF export, stateless webhook re-delivery, and <strong>Stripe billing metered per call</strong>.</li>
+            <li>Delivered the service to a <strong>Netherlands research group</strong> now running a clinical validation study on finger range of motion, and extended capture beyond fingers to the <strong>thumb, wrist, and elbow</strong> joints.</li>
+            <li>Built the assessment&rsquo;s <strong>gated progression</strong>: nine pose-validated substeps per hand that advance only on a correctly held position, splitting finger and thumb capture so incidental motion cannot skew either score.</li>
             <li>Kicked off platform <strong>integrations with myLaminin</strong> to connect Digits with their systems.</li>
-            <li>Ship production features quickly using <strong>AI-assisted development</strong>, picking up new tools and patterns on the job.</li>
           </ul>
         </div>
 
         <div class="xp">
           <div class="xp-head">
-            <span class="xp-role">Part-Time Home Clerk</span>
+            <span class="xp-role">GM Associate</span>
             <span class="xp-when">Jul 2021 &ndash; Present</span>
           </div>
           <div class="xp-org">Real Canadian Superstore &middot; London, ON</div>
           <ul class="xp-list">
-            <li>Built a department-wide tool that automates manual invoicing by pulling from the store-issued inventory systems, which made my invoice workflow a lot faster.</li>
-            <li>Own the day-to-day: inventory, invoicing, plano-grams, merchandising, and maintenance.</li>
-            <li>Worked with the team to keep store <strong>02812&rsquo;s Home department the most profitable of any RCSS in Ontario</strong>.</li>
+            <li>Cut invoice reconciliation from a <strong>multi-person, multi-shift manual check</strong> to a single scanning pass, with a Python/FastAPI service that parses supplier invoice PDFs against OpenCV barcode scans in SQLite.</li>
+            <li>Deployed and maintained it department-wide across <strong>three weekly shipments of 200&ndash;500 items</strong>, reliably catching the one to two undelivered cases per shipment that previously went unbilled by the warehouse.</li>
           </ul>
           <div class="project">
-            <div class="project-t">Invoicing automation tool</div>
+            <div class="project-t">Invoice reconciliation service</div>
             <div class="project-d">
-              Reads store inventory PDFs, scans barcodes, extracts tabular data, and reconciles
-              it against a local database behind a simple web UI.
+              The scanning pass runs behind a small web UI: barcodes come in one at a time and the
+              service keeps a live count of which invoice lines are still unaccounted for, so a
+              short case is caught while the shipment is still on the floor.
             </div>
             <div class="chips">
               <span class="chip">Python</span><span class="chip">FastAPI</span><span class="chip">OpenCV</span>
@@ -1695,9 +1726,38 @@
           <div class="xp-org">City of London &middot; Roads Division</div>
           <ul class="xp-list">
             <li>Operated city-owned trucks, skid-steers, and sidewalk sweepers on my own.</li>
-            <li>Ran downtown beats with independent crews, and handled requests from other departments and dispatch.</li>
-            <li>Averaged <strong>64-hour work weeks</strong> over the summer, split 40:24 between the Labourer and Home Clerk roles.</li>
+            <li>Averaged <strong>64-hour work weeks</strong> over the summer, split 40:24 between the Labourer and Superstore roles.</li>
           </ul>
+        </div>
+
+        <h2 class="body-h">Skills</h2>
+
+        <div class="skillset">
+          <div class="skill-row">
+            <p class="skill-h">Languages</p>
+            <div class="chips">
+              <span class="chip">Python</span><span class="chip">Java</span><span class="chip">C++</span>
+              <span class="chip">C#</span><span class="chip">TypeScript</span><span class="chip">JavaScript</span>
+              <span class="chip">C</span><span class="chip">Assembly</span><span class="chip">SQL</span>
+              <span class="chip">R</span><span class="chip">Bash</span><span class="chip">Lua</span>
+            </div>
+          </div>
+          <div class="skill-row">
+            <p class="skill-h">Frameworks</p>
+            <div class="chips">
+              <span class="chip">.NET / ASP.NET Core</span><span class="chip">Spring Boot</span>
+              <span class="chip">FastAPI</span><span class="chip">Node.js</span><span class="chip">React</span>
+              <span class="chip">JUnit</span><span class="chip">RESTful APIs</span>
+            </div>
+          </div>
+          <div class="skill-row">
+            <p class="skill-h">Tools</p>
+            <div class="chips">
+              <span class="chip">pandas</span><span class="chip">NumPy</span><span class="chip">LightGBM</span>
+              <span class="chip">OpenCV</span><span class="chip">Docker</span><span class="chip">GitHub Actions</span>
+              <span class="chip">nginx</span><span class="chip">Linux / Unix</span>
+            </div>
+          </div>
         </div>
 
         <h2 class="body-h">Personal Experience</h2>
