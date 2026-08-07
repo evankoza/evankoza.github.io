@@ -141,6 +141,37 @@
     line-height: 1.5;
   }
 
+  /* Same treatment as the modal's scrollbar (see .modal below) so the page and
+     the panel don't disagree: thin pumpkin thumb on a transparent track,
+     instead of the OS's grey slab.
+
+     Declared on BOTH html and body on purpose. html's overflow is visible, so
+     it's body's overflow-x that propagates to the viewport — and the engines
+     take the viewport scrollbar's styling from whichever element won that
+     propagation. Styling only html silently does nothing here.
+
+     The two blocks are alternatives, not layers: once scrollbar-width /
+     scrollbar-color are set, Chromium ignores the ::-webkit- pseudos outright,
+     so the bar is Chrome's own "thin" (10px measured, not the 12px below) and
+     the inset-thumb trick never applies. The pseudos are the fallback path for
+     Safari < 18.2 and pre-121 Chrome, which have no standard properties. */
+  html, body {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(201, 80, 0, .40) transparent;
+  }
+  html::-webkit-scrollbar, body::-webkit-scrollbar { width: 12px; }
+  html::-webkit-scrollbar-track, body::-webkit-scrollbar-track { background: transparent; }
+  html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb {
+    background: rgba(201, 80, 0, .34);
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+  }
+  html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover {
+    background: rgba(201, 80, 0, .58);
+    background-clip: padding-box;
+  }
+
   /* First screen = full viewport: the animated hero fills the space while the
      trust bar is pinned to the bottom edge, so the face dominates and the logo
      row rests just above the fold. The hero lives in its own clip box so the

@@ -25,6 +25,17 @@
   body{background:var(--bg);color:var(--ink);
     font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased}
+
+  /* page scrollbar: thin pumpkin pill, not the OS grey slab — see index.html
+     for why it's on both elements and why the ::-webkit- block is fallback-only */
+  html,body{scrollbar-width:thin;scrollbar-color:rgba(201,80,0,.40) transparent}
+  html::-webkit-scrollbar,body::-webkit-scrollbar{width:12px}
+  html::-webkit-scrollbar-track,body::-webkit-scrollbar-track{background:transparent}
+  html::-webkit-scrollbar-thumb,body::-webkit-scrollbar-thumb{background:rgba(201,80,0,.34);
+    background-clip:padding-box;border:3px solid transparent;border-radius:999px}
+  html::-webkit-scrollbar-thumb:hover,body::-webkit-scrollbar-thumb:hover{
+    background:rgba(201,80,0,.58);background-clip:padding-box}
+
   .page{max-width:920px;margin:0 auto;padding:28px 20px 60px}
 
   /* compile-style header — shared chrome across the experiments */

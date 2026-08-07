@@ -32,6 +32,16 @@
     font:15px/1.4 "gg sans","Segoe UI",Helvetica,Arial,sans-serif;
     -webkit-font-smoothing:antialiased;display:flex;min-height:100vh;padding:18px}
 
+  /* page scrollbar: thin pumpkin pill, not the OS grey slab — see index.html
+     for why it's on both elements and why the ::-webkit- block is fallback-only */
+  html,body{scrollbar-width:thin;scrollbar-color:rgba(201,80,0,.40) transparent}
+  html::-webkit-scrollbar,body::-webkit-scrollbar{width:12px}
+  html::-webkit-scrollbar-track,body::-webkit-scrollbar-track{background:transparent}
+  html::-webkit-scrollbar-thumb,body::-webkit-scrollbar-thumb{background:rgba(201,80,0,.34);
+    background-clip:padding-box;border:3px solid transparent;border-radius:999px}
+  html::-webkit-scrollbar-thumb:hover,body::-webkit-scrollbar-thumb:hover{
+    background:rgba(201,80,0,.58);background-clip:padding-box}
+
   /* compile-style header — shared chrome across the experiments */
   /* margin:auto (not justify/align center) so the stack stays centered when it
      fits but the top stays scroll-reachable when header + card exceed the viewport */
