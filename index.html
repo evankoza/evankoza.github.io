@@ -713,20 +713,6 @@
   }
   .xp-list li strong { color: var(--ink); font-weight: 600; }
 
-  /* SKILLS — the resume's three grouped rows. Deliberately NOT an .xp: it has
-     no date and no timeline dot, so the pumpkin rule and its bullet would be
-     claiming a point in time that doesn't exist. Plain rows, shared .chip. */
-  .skill-row { margin-bottom: 22px; }
-  .skill-row:last-child { margin-bottom: 0; }
-  .skill-h {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-    margin-bottom: 10px;
-  }
-
   /* highlighted project callout */
   .project {
     margin-top: 14px;
@@ -1668,7 +1654,7 @@
 
     <div class="about-grid">
 
-      <!-- left: name · contact · education · skills (sticky) -->
+      <!-- left: name · contact · education (sticky) -->
       <aside class="about-meta">
         <h1 class="about-name">EVAN<br>KOZA<span class="sr-only">, Software Developer, Computer Science &amp; Data Science</span></h1>
         <p class="about-role">CS &amp; Data Science @ Western University</p>
@@ -1720,7 +1706,6 @@
             <li>Built the company&rsquo;s <strong>Range of Motion (ROM) API</strong> end to end: capture endpoints, a research console with filtering and CSV/PDF export, stateless webhook re-delivery, and <strong>Stripe billing metered per call</strong>.</li>
             <li>Delivered the service to a <strong>Netherlands research group</strong> now running a clinical validation study on finger range of motion, and extended capture beyond fingers to the <strong>thumb, wrist, and elbow</strong> joints.</li>
             <li>Built the assessment&rsquo;s <strong>gated progression</strong>: nine pose-validated substeps per hand that advance only on a correctly held position, splitting finger and thumb capture so incidental motion cannot skew either score.</li>
-            <li>Kicked off platform <strong>integrations with myLaminin</strong> to connect Digits with their systems.</li>
           </ul>
         </div>
 
@@ -1761,36 +1746,6 @@
             <li>Operated city-owned trucks, skid-steers, and sidewalk sweepers on my own.</li>
             <li>Averaged <strong>64-hour work weeks</strong> over the summer, split 40:24 between the Labourer and Superstore roles.</li>
           </ul>
-        </div>
-
-        <h2 class="body-h">Skills</h2>
-
-        <div class="skillset">
-          <div class="skill-row">
-            <p class="skill-h">Languages</p>
-            <div class="chips">
-              <span class="chip">Python</span><span class="chip">Java</span><span class="chip">C++</span>
-              <span class="chip">C#</span><span class="chip">TypeScript</span><span class="chip">JavaScript</span>
-              <span class="chip">C</span><span class="chip">Assembly</span><span class="chip">SQL</span>
-              <span class="chip">R</span><span class="chip">Bash</span><span class="chip">Lua</span>
-            </div>
-          </div>
-          <div class="skill-row">
-            <p class="skill-h">Frameworks</p>
-            <div class="chips">
-              <span class="chip">.NET / ASP.NET Core</span><span class="chip">Spring Boot</span>
-              <span class="chip">FastAPI</span><span class="chip">Node.js</span><span class="chip">React</span>
-              <span class="chip">JUnit</span><span class="chip">RESTful APIs</span>
-            </div>
-          </div>
-          <div class="skill-row">
-            <p class="skill-h">Tools</p>
-            <div class="chips">
-              <span class="chip">pandas</span><span class="chip">NumPy</span><span class="chip">LightGBM</span>
-              <span class="chip">OpenCV</span><span class="chip">Docker</span><span class="chip">GitHub Actions</span>
-              <span class="chip">nginx</span><span class="chip">Linux / Unix</span>
-            </div>
-          </div>
         </div>
 
         <h2 class="body-h">Personal Experience</h2>
