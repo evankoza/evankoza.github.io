@@ -899,16 +899,35 @@
     }
 
     // ── the animation loop ──────────────────────────────────────────────────
-    let running = false, onScreen = true;
-    function startStep() { if (!running) { running = true; requestAnimationFrame(step); } }
-    function stopStep() { running = false; }
+    let running = false, onScreen = true, rafId = 0, lastStepMs = 0;
+    function startStep() { if (!running) { running = true; rafId = requestAnimationFrame(step); } }
+    // Clearing `running` alone leaks loops: a rAF scheduled just before the tab
+    // is hidden stays QUEUED, so hide/show left the stale callback pending AND
+    // scheduled a fresh one — both saw running === true and kept rescheduling,
+    // adding a concurrent loop per cycle (the per-frame `s.phase += d` then ran
+    // N times a frame and the spin sped up). Retract the handle on the way out.
+    function stopStep() {
+      running = false;
+      lastStepMs = 0;           // resuming starts a fresh delta, not the whole gap
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    }
     function step(ms) {
+      rafId = 0;
       const now = ms || performance.now();
       const wt = (now / 1000) * cfg.wobbleSpd;
+      // Elapsed time as 60fps-equivalent frames: the settle below is a per-call
+      // step, so without this a 120Hz display spins twice as fast as a 60Hz one.
+      // Scaling by this keeps the ease slider meaning what it does at 60fps.
+      // Clamped to 4 frames so a long stall catches up without teleporting.
+      const eFrames = lastStepMs ? Math.min(4, (now - lastStepMs) / (1000 / 60)) : 1;
+      lastStepMs = now;
       for (const s of state) {
         const tgt = cfg.loop ? loopTargetFor(s) : s.goal;
         const rem = tgt - s.phase;
-        let d = rem * cfg.ease + Math.sign(rem) * 0.018 * spinTurns(s.cfg.a);
+        // the exponential term compounds over eFrames frames (a power, not a
+        // product), so it is exact at eFrames === 1 and rate-independent past it
+        let d = rem * (1 - Math.pow(1 - cfg.ease, eFrames))
+              + Math.sign(rem) * 0.018 * spinTurns(s.cfg.a) * eFrames;
         if (Math.abs(d) > Math.abs(rem)) d = rem;
         s.phase += d;
         const wob = cfg.wobbleAmp * s.cfg.a * Math.sin(wt + s.wobOff);
@@ -943,7 +962,7 @@
           renderPortrait();
         }
       }
-      if (running) requestAnimationFrame(step);
+      if (running) rafId = requestAnimationFrame(step);
     }
 
     // pause when the stage scrolls off-screen or the tab is hidden
@@ -1438,7 +1457,7 @@
 
     // dev hook: freeze on the resting state for still captures
     window.__freeze = () => {
-      running = false; pSpinning = false; pCharEff = null;
+      stopStep(); pSpinning = false; pCharEff = null;
       for (const s of state) { s.phase = s.goal; drawCurve(s); }
       const n = performance.now(); drawBanner(bannerPixelAt(n), n); renderPortrait();
     };

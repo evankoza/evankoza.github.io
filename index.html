@@ -2416,12 +2416,34 @@
     // the banner's ~200 strip-blits per frame). Run it ONLY while the hero is on
     // screen and the tab is active — otherwise it renders to nobody.
     let running = false;        // is a rAF for step() currently scheduled?
+    let rafId   = 0;            // ...and its handle, so stopStep can actually retract it
+    let lastStepMs = 0;         // previous step()'s timestamp, for delta timing
     let heroOnScreen = true;    // is the intro/hero section intersecting the viewport?
-    function startStep() { if (!running) { running = true; requestAnimationFrame(step); } }
-    function stopStep()  { running = false; }   // step() bails on its own `if (running)` guard
+    function startStep() { if (!running) { running = true; rafId = requestAnimationFrame(step); } }
+    // Clearing `running` alone is NOT enough. A rAF already scheduled when the
+    // tab is hidden stays QUEUED (it just doesn't fire), so a hide/show cycle
+    // used to leave the stale callback pending AND schedule a fresh one — both
+    // then saw running === true and each kept rescheduling itself. Every
+    // hide/show added another concurrent loop, so `s.phase += d` (a per-frame
+    // step) advanced N times per frame and the EVAN spin got faster the longer
+    // the page had been backgrounded. Retract the handle on the way out.
+    function stopStep()  {
+      running = false;
+      lastStepMs = 0;           // resuming starts a fresh delta, not the whole gap
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    }
     function step(ms) {
+      rafId = 0;                // this callback has fired; nothing is queued yet
       const now = ms || performance.now();
       const wt = (now / 1000) * WOBBLE_SPD;
+      // The settle below advances the phase by a step per CALL, so on a 120Hz
+      // display the letters spun twice as fast as on 60Hz (and under-rotated
+      // whenever frames were dropped). Measure the real gap and express it in
+      // 60fps-equivalent frames, so EASE / SETTLE_BASE keep meaning exactly
+      // what they meant when they were dialled in at 60fps. Clamped to 4 frames
+      // (~15fps): past that, catching up reads as a jump rather than motion.
+      const eFrames = lastStepMs ? Math.min(4, (now - lastStepMs) / (1000 / 60)) : 1;
+      lastStepMs = now;
       for (const s of state) {
         // ease toward the resting phase, plus a small constant closing speed so
         // the tail finishes promptly instead of asymptoting forever
@@ -2430,7 +2452,11 @@
         // spin distance is 2π·spinTurns(a), so the rate must scale by the same
         // count or letters with fewer turns (N) finish their settle far sooner
         // than ones with more (E)
-        let d = rem * EASE + Math.sign(rem) * SETTLE_BASE * spinTurns(s.cfg.a);
+        // eFrames frames of `rem *= (1 - EASE)` compound rather than add, so the
+        // exponential term is a power, not a product — that makes the result
+        // identical at eFrames === 1 and frame-rate independent everywhere else.
+        let d = rem * (1 - Math.pow(1 - EASE, eFrames))
+              + Math.sign(rem) * SETTLE_BASE * spinTurns(s.cfg.a) * eFrames;
         if (Math.abs(d) > Math.abs(rem)) d = rem;   // don't overshoot
         s.phase += d;
         // gentle wobble layered directly on the rendered phase (scaled by `a`)
@@ -2470,7 +2496,7 @@
         }
       }
       pumpPortrait(P_BUDGET);       // chip away at any mosaic still being drawn
-      if (running) requestAnimationFrame(step);
+      if (running) rafId = requestAnimationFrame(step);
     }
 
     // pause the hero whenever it scrolls out of view (mirrors the projects
@@ -2489,7 +2515,7 @@
 
     // dev hook: freeze the loop on the resting state for still captures
     window.__freeze = () => {
-      running = false;
+      stopStep();
       pSpinning = false;
       for (const s of state) {
         s.phase = s.goal;
@@ -2502,7 +2528,7 @@
     window.__unfreeze = () => {
       pSpinning = true;
       pLastSwitch = performance.now();
-      if (!running) { running = true; requestAnimationFrame(step); }
+      startStep();
     };
     // dev hook: jump the portrait to a specific spin frame (for still captures)
     window.__portrait = (i) => { pIdx = ((i | 0) % portraitImgs.length + portraitImgs.length) % portraitImgs.length; pickScan(); renderPortrait(); };
