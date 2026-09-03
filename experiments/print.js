@@ -624,7 +624,6 @@ $('printBtn').addEventListener('click', async () => {
   const btn = $('printBtn');
   btn.disabled = true;
   setMsg('Sending…');
-  let id = null;
   try {
     // snap the paper to the content so we never print trailing blank roll
     // (also updates the preview via the queued render)
@@ -638,63 +637,16 @@ $('printBtn').addEventListener('click', async () => {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-    id = body.id;
-    setMsg('Queued! Watching printer…', 'ok');
+    // The relay accepting the job is the whole story we tell. Whether it hits
+    // paper now or after the printer wakes up is my problem, not the visitor's,
+    // so there's no job watcher and no queued-vs-printed distinction.
+    setMsg('✓ Got it — your receipt is on its way to paper.', 'ok');
   } catch (err) {
     setMsg(`✗ ${err.message}`, 'err');
   } finally {
-    // the button comes straight back the moment the job is accepted — the
-    // watcher runs unawaited below, so a printer that's out never locks the
-    // page for the 5 minutes it takes the poll loop to give up
     btn.disabled = false;
   }
-  if (id) watchJob(id, ++watchSeq);
 });
-
-function queuedMsg() {
-  return printerReady
-    ? 'Queued…'
-    : 'Queued — it will print when the printer is back. Safe to close the page.';
-}
-
-// Each print gets a sequence number; only the newest job's watcher is allowed
-// to write to #msg, so back-to-back prints don't fight over the status line.
-let watchSeq = 0;
-
-async function watchJob(id, seq) {
-  for (let i = 0; i < 150; i++) {  // ~5 min
-    await new Promise(r => setTimeout(r, 2000));
-    if (seq !== watchSeq) return;  // a newer print owns the message line now
-    const res = await fetch(`${RELAY_URL}/api/job/${id}`).catch(() => null);
-    if (!res || !res.ok) continue;
-    const { state } = await res.json();
-    if (seq !== watchSeq) return;
-    if (state === 'done') { setMsg('✓ Printed! It is now physically on paper.', 'ok'); return; }
-    if (state.startsWith('error')) { setMsg(`✗ ${state}`, 'err'); return; }
-    setMsg(state === 'printing' ? 'Printing…' : queuedMsg());
-  }
-  if (seq === watchSeq) setMsg('Still queued — it will print when the printer is back.', 'ok');
-}
-
-// ---------- status pill ----------
-let printerReady = false;   // last polled bridge+printer state
-async function pollStatus() {
-  const el = $('status');
-  try {
-    const res = await fetch(`${RELAY_URL}/api/status`);
-    const s = await res.json();
-    printerReady = s.bridgeOnline && s.printerOnline;
-    el.innerHTML = `<span class="dot ${printerReady ? 'on' : 'off'}"></span>` +
-      (printerReady ? 'in house' : 'out');
-    $('offlineNote').hidden = printerReady;
-  } catch {
-    printerReady = false;
-    el.innerHTML = '<span class="dot off"></span>relay unreachable';
-    $('offlineNote').hidden = true; // relay down: queueing isn't possible either
-  }
-}
-pollStatus();
-setInterval(pollStatus, 15000);
 
 // ---------- init ----------
 addTextEl();

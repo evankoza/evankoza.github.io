@@ -109,23 +109,6 @@
   }
   .topbar a.nav:hover { color: var(--pumpkin); border-color: var(--pumpkin); }
 
-  /* status pill matches the nav pills */
-  #status {
-    font-family: var(--mono);
-    font-size: 12px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 8px 14px;
-    background: var(--paper);
-    white-space: nowrap;
-  }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-         background: var(--ink-faint); margin-right: 7px; vertical-align: baseline; }
-  .dot.on { background: #2f9e44; } .dot.off { background: #c92a2a; }
-
   /* ── layout ───────────────────────────────────────────────── */
   main {
     max-width: 1100px; margin: 0 auto;
@@ -245,11 +228,6 @@
   #paperGrip:hover { color: var(--pumpkin); border-color: var(--pumpkin); }
   #msg { min-height: 18px; font-size: 13px; color: var(--ink-muted); margin-top: 8px; }
   #msg.err { color: #c92a2a; } #msg.ok { color: #2f9e44; }
-  /* deliberately quiet: queueing is the normal path, not a problem to warn about */
-  #offlineNote {
-    font-size: 12px; color: var(--ink-faint); line-height: 1.45;
-    margin-bottom: 10px;
-  }
 
   /* ── phones ───────────────────────────────────────────────────
      The paper is a real 384px printer bitmap, so the goal here is to give
@@ -294,7 +272,6 @@
     </div>
     <nav class="links">
       <a class="nav" href="/#return">← Portfolio</a>
-      <span id="status"><span class="dot"></span>checking…</span>
     </nav>
   </header>
 
@@ -390,9 +367,6 @@
     </section>
 
     <section>
-      <div id="offlineNote" hidden>
-        🧻 Printer's out right now — send away, it'll roll out when it's back.
-      </div>
       <button id="printBtn" class="primary">🖨 Print it</button>
       <div id="msg"></div>
     </section>
@@ -400,6 +374,6 @@
 </main>
 
 <!-- bump ?v= whenever the relay URL in print.js changes, so browsers don't run a stale cached copy -->
-<script src="print.js?v=7"></script>
+<script src="print.js?v=8"></script>
 </body>
 </html>
