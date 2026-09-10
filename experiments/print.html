@@ -228,6 +228,32 @@
   #paperGrip:hover { color: var(--pumpkin); border-color: var(--pumpkin); }
   #msg { min-height: 18px; font-size: 13px; color: var(--ink-muted); margin-top: 8px; }
   #msg.err { color: #c92a2a; } #msg.ok { color: #2f9e44; }
+  /* a repeat print isn't a failure, so it gets the accent, not the red */
+  #msg.warn { color: var(--pumpkin); }
+
+  /* ── "who are you?" prompt ────────────────────────────────────
+     Fires on every print. Whatever they type is appended to their own
+     receipt, so it comes off the roll attached to the thing they made. */
+  #helloDlg {
+    /* the global `* { margin: 0 }` reset kills <dialog>'s auto-centering */
+    margin: auto;
+    border: 1px solid var(--line); border-radius: 12px; padding: 0;
+    background: var(--paper); color: var(--ink);
+    width: min(430px, calc(100vw - 28px));
+    box-shadow: 0 18px 50px rgba(28, 27, 24, .22);
+  }
+  #helloDlg::backdrop { background: rgba(28, 27, 24, .42); }
+  #helloDlg form { padding: 18px 18px 16px; }
+  #helloDlg h2 {
+    font-family: var(--mono); font-size: 12px; text-transform: uppercase;
+    letter-spacing: .12em; color: var(--pumpkin); margin: 0 0 10px; font-weight: 600;
+  }
+  #helloDlg p.copy { font-size: 15px; margin-bottom: 12px; }
+  #helloDlg textarea { margin-bottom: 14px; }
+  .helloBtns { display: flex; gap: 10px; align-items: center; }
+  .helloBtns button.primary { width: auto; flex: 1; }
+  /* skip sits on the left, but the primary is first in the DOM so Enter picks it */
+  .helloBtns button.ghost { order: -1; background: transparent; color: var(--ink-muted); }
 
   /* ── phones ───────────────────────────────────────────────────
      The paper is a real 384px printer bitmap, so the goal here is to give
@@ -373,7 +399,22 @@
   </div>
 </main>
 
+<!-- A receipt arrives here with no idea who sent it; this is the only chance
+     to ask. Skippable in one click, and the answer only ever hits paper. -->
+<dialog id="helloDlg">
+  <form method="dialog">
+    <h2>Optional — before it prints</h2>
+    <p class="copy">Now, you know me, but I don't know you… Feel free to give me a way to contact you!</p>
+    <textarea id="helloText" rows="2" maxlength="120"
+              placeholder="email, @handle, a name — anything you like"></textarea>
+    <div class="helloBtns">
+      <button id="helloSend" value="send" class="primary">Add it &amp; print</button>
+      <button id="helloSkip" value="skip" class="ghost">Just print</button>
+    </div>
+  </form>
+</dialog>
+
 <!-- bump ?v= whenever the relay URL in print.js changes, so browsers don't run a stale cached copy -->
-<script src="print.js?v=8"></script>
+<script src="print.js?v=9"></script>
 </body>
 </html>
