@@ -648,8 +648,10 @@ function askHello() {
       if (helloDlg.open) helloDlg.close();
       resolve(send ? helloText.value.trim() : '');
     };
-    $('helloSend').addEventListener('click', () => done(true), opt);
-    $('helloSkip').addEventListener('click', () => done(false), opt);
+    // preventDefault so the form's own method=dialog submit doesn't ALSO
+    // close the dialog: two closes for one click leaves it unable to reopen.
+    $('helloSend').addEventListener('click', e => { e.preventDefault(); done(true); }, opt);
+    $('helloSkip').addEventListener('click', e => { e.preventDefault(); done(false); }, opt);
     helloDlg.addEventListener('cancel', () => done(false), opt);   // Esc
     helloDlg.addEventListener('close', () => done(helloDlg.returnValue === 'send'), opt);
   });
