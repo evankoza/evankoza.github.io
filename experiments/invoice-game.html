@@ -46,12 +46,12 @@
 
   /* the invoice + scanner are centered together as a pair, so the stack sits
      left of dead-center to leave room for the scanner on its right.
-     group = page(420) + gap(44) + scanner(380) = 844; half = 422.
-     stack center offset = 422 - 210 = 212px left of viewport center. */
+     group = page(420) + gap(44) + scanner(480) = 944; half = 472.
+     stack center offset = 472 - 210 = 262px left of viewport center. */
   #stack {
     position: absolute;
     top: 50%;
-    left: calc(50% - 212px);
+    left: calc(50% - 262px);
     transform: translate(-50%, -50%);
   }
 
@@ -190,11 +190,11 @@
     position: fixed;
     top: 50%;
     /* sits to the right of the off-center stack so the pair is centered (see #stack):
-       scanner left = group-right(50% + 422px) - scanner-width(380px) = 50% + 42px */
-    left: calc(50% + 42px);
+       scanner left = group-right(50% + 472px) - scanner-width(480px) = 50% - 8px */
+    left: calc(50% - 8px);
     transform: translateY(-50%);
     z-index: 60;
-    width: 380px;
+    width: 480px;
     background: #1c2530;
     border: 1px solid #0d1218;
     border-radius: 16px;
@@ -238,14 +238,21 @@
     background: #07120c;
     border: 1px solid #11331f;
     border-radius: 8px;
-    padding: 16px;
-    height: 236px;
+    padding: 18px;
+    height: min(440px, calc(100vh - 200px));
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: flex-start;
     overflow: hidden;
     box-shadow: inset 0 0 22px rgba(0,255,120,0.08);
+  }
+  /* text-heavy screens (how-to, quiz, debrief) read top-down and scroll */
+  .scn-screen.doc {
+    justify-content: flex-start;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #1f5a3a transparent;
   }
   #scn-type {
     flex: 0 0 auto;
@@ -268,16 +275,98 @@
     word-break: break-word;
     text-shadow: 0 0 8px rgba(93,255,160,0.4);
   }
-  /* readable paragraph styling for the start-screen instructions */
+  /* quantity line under a scanned value (short version only) */
+  #scn-qty {
+    display: none;
+    margin-top: 14px;
+    font: 700 15px "Segoe UI", sans-serif;
+    letter-spacing: 1.5px;
+    color: #ffe9a8;
+  }
+  #scn-qty b { font-size: 30px; margin-left: 6px; font-variant-numeric: tabular-nums; }
+
+  /* readable paragraph styling for the instructions, quiz and debrief */
   .scn-intro {
-    font: 400 13.5px "Segoe UI", system-ui, sans-serif;
-    line-height: 1.5;
+    width: 100%;
+    font: 400 15px "Segoe UI", system-ui, sans-serif;
+    line-height: 1.55;
     color: #aebacb;
     text-shadow: none;
     word-break: normal;
   }
   .scn-intro b { color: #d6e2f2; }
   .scn-intro b.g { color: #5dffa0; }
+  .scn-intro b.y { color: #ffe9a8; }
+  .scn-intro b.r { color: #ff8a98; }
+  .scn-intro p { margin-bottom: 10px; }
+  .scn-intro h4 {
+    font: 700 11px "Segoe UI", sans-serif;
+    letter-spacing: 1.6px;
+    color: #6fae88;
+    margin: 14px 0 6px;
+  }
+  .scn-intro h3 {
+    font: 800 20px "Segoe UI", sans-serif;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .scn-intro ol { padding-left: 22px; margin-bottom: 4px; }
+  .scn-intro li { margin-bottom: 5px; padding-left: 2px; }
+  .scn-intro .tips { font-size: 13.5px; color: #8fa0b8; }
+
+  /* version picker on the how-to screen */
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 2px; }
+  .mode {
+    text-align: left;
+    font: 400 13px "Segoe UI", sans-serif;
+    line-height: 1.4;
+    color: #9fb3c8;
+    background: #0c1d14;
+    border: 2px solid #1d3a2a;
+    border-radius: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+  }
+  .mode b { display: block; font-size: 15px; letter-spacing: 1px; color: #d6e2f2; margin-bottom: 3px; }
+  .mode:hover { border-color: #2f6b4a; }
+  .mode.sel { border-color: #39d98a; background: #0f2a1c; }
+  .mode.sel b { color: #5dffa0; }
+
+  /* quiz answer list */
+  .quiz { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+  .quiz button {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    font: 400 13.5px "Segoe UI", sans-serif;
+    color: #cfdbe8;
+    background: #0c1d14;
+    border: 2px solid #1d3a2a;
+    border-radius: 8px;
+    padding: 8px 11px;
+    cursor: pointer;
+  }
+  .quiz button:hover { border-color: #2f6b4a; }
+  .quiz button.sel { border-color: #ffd36b; background: #2a2410; }
+  .quiz button.right { border-color: #39d98a; background: #0f2a1c; }
+  .quiz button.wrong { border-color: #e2664f; background: #2a1414; }
+  .quiz button:disabled { cursor: default; }
+  .quiz .qn { font-weight: 700; color: #ffe9a8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* the "here's the real product" closer at the end of every run */
+  .pitch {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #10301f, #0b2233);
+    border: 1px solid #2a6a4a;
+    color: #cfe8da;
+  }
+  .pitch b { color: #5dffa0; }
   .scn-foot {
     display: flex;
     align-items: center;
@@ -302,6 +391,7 @@
   }
   #scn-next:hover { filter: brightness(1.1); }
   #scn-next:active { transform: translateY(1px); }
+  #scn-next:disabled { opacity: 0.4; filter: none; transform: none; cursor: default; }
   .scn-btns { display: flex; gap: 8px; align-items: center; }
   #scn-giveup {
     font: 600 13px "Segoe UI", sans-serif;
@@ -385,11 +475,11 @@
 
   /* ── phones / narrow windows ──────────────────────────────────
      The desktop layout hard-codes an 844px-wide pair (page 420 + gap + scanner
-     380) either side of centre, so below ~900px the invoice walks off the left
+     480) either side of centre, so below ~980px the invoice walks off the left
      edge and the scanner off the right. Here the pair goes vertical instead:
      invoice pinned top and scaled to fit by --pscale (set in JS, since it
      depends on the live scanner height), scanner docked as a bottom bar. */
-  @media (max-width: 900px) {
+  @media (max-width: 980px) {
     /* 44px top strip left clear for the compile chrome + 🔍 button, so neither
        sits on top of the invoice letterhead */
     #stack {
@@ -414,7 +504,7 @@
     .scn-screen {
       height: auto;
       min-height: 84px;
-      max-height: 34vh;                    /* bounds the tall intro text */
+      max-height: 42vh;                    /* bounds the tall intro text */
       overflow-y: auto;
       padding: 10px 12px;
       justify-content: flex-start;
@@ -432,7 +522,7 @@
      Stacking vertically is wrong when there is no vertical room: a docked
      bottom bar plus a 545px page leaves the invoice a postage stamp. Go back
      to side-by-side — invoice left, scanner as a right-hand column. */
-  @media (max-width: 900px) and (max-height: 560px) {
+  @media (max-width: 980px) and (max-height: 560px) {
     #stack {
       top: 50%;
       left: 8px;
@@ -490,6 +580,7 @@
     <div class="scn-screen">
       <div id="scn-type">READY</div>
       <div id="scn-value">— press START —</div>
+      <div id="scn-qty">QTY RECEIVED<b></b></div>
     </div>
     <div class="scn-foot">
       <span id="scn-count">0 / 0 scanned</span>
@@ -602,8 +693,8 @@
   const FOOT_W = PAGE_W * Math.cos(A) + PAGE_H * Math.sin(A);
   const FOOT_H = PAGE_W * Math.sin(A) + PAGE_H * Math.cos(A);
 
-  const MQ_NARROW    = window.matchMedia('(max-width: 900px)');
-  const MQ_LANDSCAPE = window.matchMedia('(max-width: 900px) and (max-height: 560px)');
+  const MQ_NARROW    = window.matchMedia('(max-width: 980px)');
+  const MQ_LANDSCAPE = window.matchMedia('(max-width: 980px) and (max-height: 560px)');
 
   // clientWidth, not innerWidth: innerWidth is the *visual* viewport, which a
   // pinch-zoom or a mobile browser's page scale can shift away from the layout
@@ -870,22 +961,33 @@
   cornerBackEl.addEventListener('pointerdown', (e) => e.stopPropagation());
 
   // ---- Receiving scanner feed -------------------------------------------
-  // Every load is a fresh "shipment": 5 random line items DON'T ship, and the
-  // rest are fed back one at a time by a single random identifier (UPC / Article
-  // # / Description). Each shipped item appears exactly once; the missing 5 never
-  // appear — those are the discrepancies the player has to notice on the paper.
+  // Two versions, picked on the how-to screen:
+  //  SHORT — 10 random line items, each read back with the quantity received.
+  //          One of them came in short of its invoice qty. Quiz: which count?
+  //  LONG  — the whole invoice. 5 random line items DON'T ship; every other one
+  //          is read back once. Quiz: which 5 never showed up?
+  // Every box is read back by ONE random identifier (UPC / Article # / Description),
+  // the way a real receiver gets whatever is printed on the side facing them.
   const ITEMS = (window.SHIPMENT_ITEMS || []).slice();
   const MISSING_COUNT = 5;
-  const SECONDS_PER_ITEM = 2;            // "time to beat" = 2s per shipped item
+  const SHORT_COUNT = 10;
+  const LONG_DECOYS = 7;                 // items that DID ship, mixed into the long quiz
+  const SECONDS_PER_ITEM = 2;            // "time to beat" = 2s per box
 
+  const scnScreen = document.querySelector('.scn-screen');
   const scnType   = document.getElementById('scn-type');
   const scnValue  = document.getElementById('scn-value');
+  const scnQty    = document.getElementById('scn-qty');
   const scnCount  = document.getElementById('scn-count');
   const scnNext   = document.getElementById('scn-next');
   const scnGiveup = document.getElementById('scn-giveup');
   const targetValEl = document.getElementById('target-val');
 
-  let queue = [], qi = -1, shippedTotal = 0, missingItems = [];
+  let mode = 'short';
+  let phase = 'intro';                   // intro -> scan -> quiz -> done
+  let queue = [], qi = -1, shippedTotal = 0, scanMs = 0;
+  let missingItems = [], shortLine = null;
+  let quizOpts = [], picks = new Set();
 
   function shuffle(a) {
     for (let i = a.length - 1; i > 0; i--) {
@@ -894,104 +996,247 @@
     }
     return a;
   }
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  // doc = text-heavy screen: reads top-down and scrolls instead of centering
+  function setScreen(type, bg, html, doc) {
+    scnType.textContent = type;
+    scnType.style.background = bg || '';
+    scnValue.innerHTML = html;
+    scnScreen.classList.toggle('doc', !!doc);
+    scnScreen.scrollTop = 0;
+    scnQty.style.display = 'none';
+  }
+
+  function pickIdentifier(it) {
+    const fields = [];
+    if (it.upc)  fields.push(['UPC', it.upc]);
+    if (it.art)  fields.push(['ARTICLE #', it.art]);
+    if (it.desc) fields.push(['DESCRIPTION', it.desc]);
+    return fields[Math.floor(Math.random() * fields.length)];
+  }
 
   function buildShipment() {
     const order = shuffle(ITEMS.map((_, i) => i));
-    const missingIdx = new Set(order.slice(0, MISSING_COUNT));
-    missingItems = order.slice(0, MISSING_COUNT).map(i => ITEMS[i]);
-
-    // shipped items, shuffled; each gets ONE random identifier to display
-    queue = shuffle(ITEMS.filter((_, i) => !missingIdx.has(i)));
-    queue.forEach(it => {
-      const fields = [];
-      if (it.upc)  fields.push(['UPC', it.upc]);
-      if (it.art)  fields.push(['ARTICLE #', it.art]);
-      if (it.desc) fields.push(['DESCRIPTION', it.desc]);
-      it._show = fields[Math.floor(Math.random() * fields.length)];
-    });
+    missingItems = [];
+    shortLine = null;
+    if (mode === 'long') {
+      const missingIdx = new Set(order.slice(0, MISSING_COUNT));
+      missingItems = order.slice(0, MISSING_COUNT).map(i => ITEMS[i]);
+      queue = shuffle(ITEMS.filter((_, i) => !missingIdx.has(i))).map(it => ({ it, recv: it.qty }));
+    } else {
+      // qty is the invoice's DR Qty (what the DC actually sent); a 0 line was never
+      // put on the truck, so it can't come off it. The short line needs 2+, or
+      // "short" would just mean "never came".
+      const s = order.find(i => ITEMS[i].qty >= 2);
+      const rest = order.filter(i => i !== s && ITEMS[i].qty >= 1).slice(0, SHORT_COUNT - 1);
+      const shortBy = 1 + Math.floor(Math.random() * Math.min(3, ITEMS[s].qty - 1));
+      shortLine = { it: ITEMS[s], recv: ITEMS[s].qty - shortBy };
+      queue = shuffle([shortLine].concat(rest.map(i => ({ it: ITEMS[i], recv: ITEMS[i].qty }))));
+    }
+    queue.forEach(q => { q.show = pickIdentifier(q.it); });
     shippedTotal = queue.length;
     qi = -1;
+    phase = 'intro';
 
     targetValEl.textContent = fmtClock(shippedTotal * SECONDS_PER_ITEM);
-    scnType.textContent = 'HOW TO PLAY';
-    scnType.style.background = '';
-    scnGiveup.style.display = '';   // visible again for a fresh run
-    scnGiveup.disabled = true;      // ...but nothing to give up on until you start
-    scnValue.innerHTML =
-      '<div class="scn-intro">' +
-        '<b>Goal:</b> the truck arrived short &mdash; your job is to figure out which items actually shipped and which never did. ' +
-        'Each <b class="g">SCAN NEXT</b> reads back one received item by its UPC, article #, or description. ' +
-        'Find it on the invoice and <b class="g">draw on the invoice</b> to note that it shipped.<br><br>' +
-        (COARSE
-          ? '<b class="g">Tap 🔍</b> then drag the invoice to magnify the fine print.<br>' +
-            '<b class="g">Tap the dog-eared corners</b> to switch pages.<br><br>'
-          : '<b class="g">Hold right-click</b> to magnify the fine print.<br>' +
-            '<b class="g">Click the corners</b> to switch pages.<br><br>') +
-        '<b>' + MISSING_COUNT + ' items never scan</b> &mdash; those are the ones that didn\'t ship. Catch them before the clock beats you.' +
-      '</div>';
     scnCount.textContent = '0 / ' + shippedTotal + ' scanned';
     scnNext.textContent = 'START ▶';
+    scnNext.disabled = false;
+    scnGiveup.style.display = '';   // visible again for a fresh run
+    scnGiveup.disabled = true;      // ...but nothing to give up on until you start
+    showIntro();
+  }
+
+  function modeBtn(id, name, blurb) {
+    return '<button class="mode' + (mode === id ? ' sel' : '') + '" data-mode="' + id + '">' +
+      '<b>' + name + '</b>' + blurb + '</button>';
+  }
+
+  function showIntro() {
+    const short = mode === 'short';
+    setScreen('HOW TO PLAY', '',
+      '<div class="scn-intro">' +
+        '<p>You work <b>receiving</b> at a grocery store. A truck just dropped off a load, and the ' +
+        'vendor\'s <b>paper invoice</b> (the stack of paper on the desk) lists everything that <i>should</i> be on it. ' +
+        'Your job: check what <b class="y">actually arrived</b>.</p>' +
+        '<h4>1 &nbsp;PICK A VERSION</h4>' +
+        '<div class="modes">' +
+          modeBtn('short', 'SHORT', SHORT_COUNT + ' boxes. Check each one\'s count too &mdash; one count is wrong.') +
+          modeBtn('long', 'LONG', 'Every box: all ' + (ITEMS.length - MISSING_COUNT) + ' of them. ' + MISSING_COUNT + ' items never arrive.') +
+        '</div>' +
+        '<h4>2 &nbsp;CHECK OFF EACH BOX</h4>' +
+        '<ol>' +
+          '<li>Press <b class="g">START</b>. This screen shows one box off the truck, by its ' +
+            '<b>UPC</b>, <b>article #</b>, <i>or</i> <b>description</b>.</li>' +
+          '<li>Find that line on the invoice. It\'s ' + NUM_PAGES + ' pages long.</li>' +
+          (short
+            ? '<li>Compare the <b class="y">QTY RECEIVED</b> to the invoice\'s <b>DR Qty</b> column (what was sent), then <b class="g">draw a check mark</b> on the line.</li>'
+            : '<li><b class="g">Draw a check mark</b> on that line so you know it came.</li>') +
+          '<li>Press <b class="g">SCAN NEXT</b> for the next box. Repeat.</li>' +
+        '</ol>' +
+        '<h4>3 &nbsp;FILE THE SHORT CLAIM</h4>' +
+        '<p>' + (short
+          ? 'When you\'re done, you\'ll be asked <b class="y">which box came in with the wrong count</b>.'
+          : 'When you\'re done, you\'ll be asked <b class="y">which ' + MISSING_COUNT + ' items never showed up</b>. ' +
+            'They\'re the lines with no check mark.') + '</p>' +
+        '<p class="tips">' +
+          (COARSE
+            ? '🔍 <b>Tap 🔍</b>, then drag on the invoice to magnify.<br>📄 <b>Tap the folded corners</b> to change pages.<br>'
+            : '🔍 <b>Hold right-click</b> to magnify the fine print.<br>📄 <b>Click the folded corners</b> to change pages.<br>') +
+          '⏱ The clock starts on your first action. Target: ' + SECONDS_PER_ITEM + ' seconds per box.' +
+        '</p>' +
+      '</div>', true);
   }
 
   function nextScan() {
     startTimer();
     qi++;
-    if (qi >= queue.length) { finishShipment(); return; }
+    if (qi >= queue.length) { startQuiz(); return; }
+    phase = 'scan';
     scnGiveup.disabled = false;   // a scan is in progress — quitting is now possible
-    const it = queue[qi];
-    scnType.textContent  = it._show[0];
-    scnType.style.background = '';
-    scnValue.textContent = it._show[1];
+    const q = queue[qi];
+    setScreen(q.show[0], '', '', false);
+    scnValue.textContent = q.show[1];
+    if (mode === 'short') {
+      scnQty.lastChild.textContent = q.recv;
+      scnQty.style.display = 'block';
+    }
     scnCount.textContent = (qi + 1) + ' / ' + shippedTotal + ' scanned';
-    scnNext.textContent  = (qi + 1 === queue.length) ? 'FINISH ▶' : 'SCAN NEXT ▶';
+    scnNext.textContent  = (qi + 1 === queue.length) ? 'DONE ▶' : 'SCAN NEXT ▶';
   }
 
-  function finishShipment() {
-    const ms = stopTimer();
+  // ---- The short-claim quiz ---------------------------------------------
+  function quizNeed() { return mode === 'long' ? MISSING_COUNT : 1; }
+
+  function startQuiz() {
+    scanMs = stopTimer();          // the clock times the scanning, not the quiz
+    phase = 'quiz';
+    picks = new Set();
+    scnGiveup.style.display = 'none';
+    if (mode === 'long') {
+      const decoys = shuffle(queue.slice()).slice(0, LONG_DECOYS).map(q => q.it);
+      quizOpts = shuffle(missingItems.concat(decoys)).map(it => ({ it, note: '' }));
+    } else {
+      quizOpts = queue.map(q => ({ it: q.it, note: '&times; ' + q.recv }));   // in the order scanned
+    }
+    setScreen('FILE THE SHORT CLAIM', '#ffd36b',
+      '<div class="scn-intro"><p>' +
+        (mode === 'long'
+          ? 'The truck came up <b class="y">' + MISSING_COUNT + ' items short</b>. Pick the ' + MISSING_COUNT +
+            ' that never arrived &mdash; they\'re the lines on the invoice with no check mark.'
+          : 'Here\'s what you counted off the truck. <b class="y">One of these counts doesn\'t match the invoice\'s DR Qty.</b> ' +
+            'Which box came in short?') +
+        '</p><div class="quiz">' +
+        quizOpts.map((o, i) =>
+          '<button data-i="' + i + '"><span>' + esc(o.it.desc) + '</span>' +
+          (o.note ? '<span class="qn">' + o.note + '</span>' : '') + '</button>').join('') +
+      '</div></div>', true);
+    scnNext.textContent = 'SUBMIT CLAIM ▶';
+    updateQuizFoot();
+  }
+
+  function updateQuizFoot() {
+    scnCount.textContent = 'Selected ' + picks.size + ' / ' + quizNeed();
+    scnNext.disabled = picks.size !== quizNeed();
+  }
+
+  function togglePick(btn) {
+    const i = +btn.dataset.i;
+    if (quizNeed() === 1 && !picks.has(i)) {   // single answer: picking one clears the other
+      picks.clear();
+      scnValue.querySelectorAll('.quiz button.sel').forEach(b => b.classList.remove('sel'));
+    }
+    if (picks.has(i)) { picks.delete(i); btn.classList.remove('sel'); }
+    else if (picks.size < quizNeed()) { picks.add(i); btn.classList.add('sel'); }
+    updateQuizFoot();
+  }
+
+  // ---- Debriefs ---------------------------------------------------------
+  // Every run ends the same way: the paper process is the problem, and the real
+  // tool makes it one scan per box.
+  const PITCH =
+    '<div class="pitch"><b>Now the real thing:</b> receiving with the actual tool is just ' +
+    '<b>scanning the barcode on each box</b> as it comes off the truck. It matches every case ' +
+    'against the invoice, counts quantities for you, and flags exactly what\'s short. ' +
+    'No paper, no pen, no magnifying glass, no guessing.</div>';
+
+  function answerReveal() {
+    if (mode === 'long') {
+      return '<h4>WHAT NEVER ARRIVED</h4>' +
+        missingItems.map(m => '&bull; ' + esc(m.desc)).join('<br>');
+    }
+    return '<h4>THE BOX THAT CAME IN SHORT</h4>' +
+      '&bull; ' + esc(shortLine.it.desc) + ' &mdash; DR Qty <b class="y">' + shortLine.it.qty +
+      '</b>, received <b class="r">' + shortLine.recv + '</b>';
+  }
+
+  function submitQuiz() {
+    phase = 'done';
     const target = shippedTotal * SECONDS_PER_ITEM;
-    const beat = (ms / 1000) <= target;
-    scnType.textContent = beat ? '✓ BEAT THE CLOCK' : '✗ TOO SLOW';
-    scnType.style.background = beat ? '#39d98a' : '#e2664f';
-    scnValue.innerHTML =
-      '<div style="font-size:14px;color:#cfe">Your time ' + fmtClock(ms / 1000) +
-      ' &nbsp;·&nbsp; target ' + fmtClock(target) + '</div>' +
-      '<div style="font-size:10px;letter-spacing:1px;color:#9fb;margin-top:8px">DID NOT SHIP (' + missingItems.length + '):</div>' +
-      '<div style="font-size:11px;line-height:1.45;color:#bcd;margin-top:2px">' +
-        missingItems.map(m => '• ' + m.desc).join('<br>') + '</div>';
+    const answer = new Set(mode === 'long' ? missingItems : [shortLine.it]);
+    const chosen = [...picks].map(i => quizOpts[i].it);
+    const correct = chosen.length === answer.size && chosen.every(it => answer.has(it));
+    const wrongPicks = chosen.filter(it => !answer.has(it));
+    const lines = ITEMS.length;
+    const timeLine = '<p>Your time: <b>' + fmtClock(scanMs / 1000) + '</b> &nbsp;&middot;&nbsp; target ' +
+      fmtClock(target) + (scanMs / 1000 <= target ? '' : ' <b class="r">(missed)</b>') + '</p>';
+
+    if (correct) {
+      setScreen('✓ CLAIM ACCEPTED', '#39d98a',
+        '<div class="scn-intro">' +
+          '<h3 style="color:#5dffa0">You got it. This time.</h3>' + timeLine +
+          '<p>Now picture doing that for <b>every truck, every day</b>: ' + lines + ' lines of tiny print across ' +
+          NUM_PAGES + ' pages, three different ways to identify each box, and nobody double-checking you. ' +
+          'Miss one check mark and the claim is wrong, and that one\'s on you.</p>' +
+          answerReveal() + PITCH +
+        '</div>', true);
+    } else {
+      setScreen('✗ WRITTEN UP', '#e2664f',
+        '<div class="scn-intro">' +
+          '<h3 style="color:#ff8a98">You\'ve been written up.</h3>' +
+          '<p>You filed a short claim against the vendor for product that <b>actually arrived</b>' +
+          (wrongPicks.length ? ' (' + wrongPicks.map(it => esc(it.desc)).join(', ') + ')' : '') +
+          '. That\'s a <b class="r">fraudulent short request</b>. The vendor disputes it, the store eats the ' +
+          'chargeback, and it goes in your file.</p>' + timeLine +
+          '<p>Honestly? It isn\'t really your fault. You just spent that time squinting at ' + lines +
+          ' lines of tiny print, matching UPCs, article numbers and descriptions by eye. ' +
+          'Paper receiving is slow, and one missed line is all it takes.</p>' +
+          answerReveal() + PITCH +
+        '</div>', true);
+    }
     scnCount.textContent = shippedTotal + ' / ' + shippedTotal + ' scanned';
     scnNext.textContent = 'NEW SHIPMENT ⟳';
-    scnGiveup.style.display = 'none';   // keep the footer single-line at game over
+    scnNext.disabled = false;
   }
 
   function giveUp() {
     const ms = stopTimer();
-    const done = qi + 1;                       // items revealed before quitting
+    phase = 'done';
+    const done = qi + 1;                       // boxes revealed before quitting
     const target = shippedTotal * SECONDS_PER_ITEM;
-    scnType.textContent = 'DNF';
-    scnType.style.background = '#e2664f';
 
     // extrapolate: at the pace they managed, how long would the whole shipment take?
-    let projection;
-    if (done > 0) {
-      const projected = (ms / 1000) / done * shippedTotal;   // seconds to do all of them
-      projection =
-        '<div style="font-size:11px;color:#ffd9a0;margin-top:3px">At this pace, all ' + shippedTotal +
-          ' &asymp; <b style="color:#ffb04a">' + fmtClock(projected) + '</b> ' +
-          '<span style="color:#9aa">(target ' + fmtClock(target) + ')</span></div>';
-    } else {
-      projection = '<div style="font-size:11px;color:#9aa;margin-top:3px">No scans yet &mdash; no pace to estimate.</div>';
-    }
+    const pace = done > 0
+      ? '<p>At your pace, the full shipment would have taken about <b class="y">' +
+          fmtClock((ms / 1000) / done * shippedTotal) + '</b> (target ' + fmtClock(target) + ').</p>'
+      : '';
 
-    // compact layout so the missing-items reveal still fits the fixed 188px screen
-    scnValue.innerHTML =
-      '<div style="font-size:15px;color:#ff8a98;font-weight:700;line-height:1.1">DID NOT FINISH</div>' +
-      '<div style="font-size:11px;color:#cfe;margin-top:3px">Scanned ' + done + ' / ' + shippedTotal +
-        ' in ' + fmtClock(ms / 1000) + '</div>' +
-      projection +
-      '<div style="font-size:9px;letter-spacing:1px;color:#9fb;margin-top:7px">DIDN\'T SHIP (' + missingItems.length + '):</div>' +
-      '<div style="font-size:10px;line-height:1.3;color:#bcd">' +
-        missingItems.map(m => '• ' + m.desc).join('<br>') + '</div>';
+    setScreen('TIME WASTED', '#e2664f',
+      '<div class="scn-intro">' +
+        '<h3 style="color:#ff8a98">' + fmtClock(ms / 1000) + ' of work, wasted.</h3>' +
+        '<p>You checked off ' + done + ' of ' + shippedTotal + ' boxes, and <b>none of it counts</b>. ' +
+        'A half-checked invoice can\'t be filed, and nobody can tell which of your marks to trust. ' +
+        'A coworker has to grab a fresh copy and <b class="r">start the whole invoice over from line one</b>.</p>' +
+        pace +
+        '<p>Meanwhile the product is sitting on the dock, and the window to dispute a shortage ' +
+        'with the vendor keeps closing.</p>' +
+        answerReveal() + PITCH +
+      '</div>', true);
     scnNext.textContent = 'NEW SHIPMENT ⟳';
+    scnNext.disabled = false;
     scnGiveup.style.display = 'none';   // keep the footer single-line at game over
   }
 
@@ -1003,18 +1248,32 @@
     finished = false;
     if (timerInt) { clearInterval(timerInt); timerInt = null; }
     timerValEl.textContent = '00:00.0';
-    scnType.style.background = '';
     renderPage();
     buildShipment();
   }
 
+  // the mode picker and quiz answers are re-rendered into the screen, so delegate
+  scnValue.addEventListener('click', (e) => {
+    const m = e.target.closest('.mode');
+    if (m && phase === 'intro') {
+      const keep = scnScreen.scrollTop;
+      mode = m.dataset.mode;
+      buildShipment();
+      scnScreen.scrollTop = keep;
+      return;
+    }
+    const q = e.target.closest('.quiz button');
+    if (q && phase === 'quiz') togglePick(q);
+  });
+
   scnNext.addEventListener('click', () => {
-    if (scnNext.textContent.indexOf('NEW SHIPMENT') === 0) { resetGame(); return; }
-    if (finished) return;
+    if (scnNext.disabled) return;
+    if (phase === 'done') { resetGame(); return; }
+    if (phase === 'quiz') { submitQuiz(); return; }
     nextScan();
   });
   scnGiveup.addEventListener('click', () => {
-    if (scnGiveup.disabled || finished) return;
+    if (scnGiveup.disabled || phase !== 'scan') return;
     giveUp();
   });
   window.addEventListener('keydown', (e) => {
