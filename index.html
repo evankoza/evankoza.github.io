@@ -2227,6 +2227,7 @@
     let P_CHAR  = 15;    // glyph height in CSS px (advance = 0.6×) — the END / sweet-spot size
     // intro: on load the glyph size starts chunky (P_CHAR_START) and lowers at
     // P_CHAR_SPEED glyph-px per second until it reaches P_CHAR, then settles.
+    // The new size is only applied when the spin frame switches (see step()).
     let P_CHAR_START = 65;   // intro starting glyph height (bigger = coarser mosaic)
     let P_CHAR_SPEED = 40;   // intro lowering rate in glyph-px per second
     let pCharEff   = (P_CHAR_START > P_CHAR) ? P_CHAR_START : null; // animated size while intro runs; null once settled
@@ -2480,22 +2481,6 @@
         drawCurve(s, s.phase + wob);
       }
       drawBanner(bannerPixelAt(now), now);
-      // intro: lower the glyph size from P_CHAR_START down to P_CHAR. The clock
-      // only starts once the current frame's image is actually ready, so the
-      // chunky first frame isn't skipped while images are still loading.
-      if (pCharEff != null) {
-        const img = portraitImgs[pIdx];
-        if (img && img.complete && img.naturalWidth) {
-          if (pCharIntroT0 === 0) pCharIntroT0 = now;
-          const v = P_CHAR_START - P_CHAR_SPEED * ((now - pCharIntroT0) / 1000);
-          const settled = v <= P_CHAR;        // reached the sweet spot
-          pCharEff = settled ? null : v;
-          // Queue the next size step only once the previous one has landed. That
-          // self-limits the intro to whatever the device can actually sustain,
-          // instead of starting a fresh full mosaic on every single frame.
-          if (settled || !pJob) startPortrait();
-        }
-      }
       // advance the head-spin: hold each frame P_SPIN ms, then redraw. Don't run
       // the clock until the first frame (index 0) is actually loaded and painted,
       // otherwise slow image loads let the spin advance past index 0 before
@@ -2504,10 +2489,17 @@
       if (cur && cur.complete && cur.naturalWidth) {
         if (pLastSwitch === 0) {
           pLastSwitch = now;        // start the hold timer on the first ready frame
+          pCharIntroT0 = now;       // ...and the intro clock with it
         } else if (pSpinning && now - pLastSwitch >= P_SPIN) {
           pLastSwitch = now;
           pIdx = (pIdx + 1) % portraitImgs.length;
           pickScan();               // new scanline spacing for the new frame
+          // intro: the glyph size only steps down on a frame switch, so the
+          // mosaic is rebuilt once per image instead of continuously on load
+          if (pCharEff != null) {
+            const v = P_CHAR_START - P_CHAR_SPEED * ((now - pCharIntroT0) / 1000);
+            pCharEff = (v <= P_CHAR) ? null : v;   // null = settled at P_CHAR
+          }
           startPortrait();
         }
       }
