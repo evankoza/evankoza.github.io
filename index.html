@@ -385,9 +385,9 @@
   /* ── ABOUT ME ───────────────────────────────────────────── */
   /* full-width stage: the framed resume floats on the paper card while a
      fluid ordered-dither field drifts behind it, showing only in the margins.
-     The field is painted on a <canvas> (.about-dither) by JS — flowing blobs
-     of pumpkin (with the odd cobalt patch) over the cream canvas. It still
-     parallaxes on scroll, just like the grid it replaced. */
+     Two <canvas> planes painted by JS: .about-dither, flowing pumpkin smoke
+     that parallaxes on scroll (the far plane), and .about-dither-near, sparse
+     cobalt wisps locked to the page in front of it. */
   .about {
     position: relative;
     /* The side padding IS the dither's viewport — it's the only place the field
@@ -456,6 +456,12 @@
     /* chunky pixels must stay crisp when the small field buffer is scaled up */
     image-rendering: pixelated;
     will-change: transform;
+  }
+  /* the near plane: locked to the page, so it's ordinary content — no
+     promotion, no oversize, JS sizes it to exactly the field's height */
+  .about-dither-near {
+    position: absolute; left: 0; right: 0; top: 0;
+    image-rendering: pixelated;
   }
   /* FLAT MODE — set by JS when the parallax layer would be too big to composite.
      will-change (and an active transform animation) force the canvas into ONE
@@ -1650,7 +1656,7 @@
        Reformatted from the DIGITS media/talk grid: sticky identity
        column on the left, scrolling experience timeline on the right. -->
   <section class="about" id="about">
-   <div class="about-dither-wrap" aria-hidden="true"><canvas class="about-dither"></canvas></div>
+   <div class="about-dither-wrap" aria-hidden="true"><canvas class="about-dither"></canvas><canvas class="about-dither-near"></canvas></div>
    <div class="about-frame">
     <span class="eyebrow"><span class="prompt">~ $</span> whoami</span>
 
@@ -2560,45 +2566,37 @@
   })();
   </script>
 
-  <!-- ══ ABOUT: fluid ordered-dither field behind the framed resume ═══
-       A <canvas> painted with flowing blobs of pumpkin (+ the occasional
-       cobalt patch) over the cream canvas, dithered with an 8×8 Bayer
-       matrix for the chunky retro grain in the reference. It animates
-       continuously AND parallaxes on scroll — same depth cue as the grid
-       it replaced. Everything visual lives in CONFIG below, so retuning
-       the look (cell size, palette, speed, cobalt amount…) is one edit. -->
+  <!-- ══ ABOUT: two-plane ordered-dither field behind the framed resume ═══
+       Two <canvas> layers of domain-warped noise, dithered with an 8×8 Bayer
+       matrix for the chunky retro grain in the reference:
+         FAR  — pumpkin smoke over the cream canvas. Drifts, and parallaxes at
+                CONFIG.SPEED, so it reads as a slow, far-away plane.
+         NEAR — sparse cobalt wisps on a clear background in chunkier cells,
+                locked to the page, so the far field slides behind both it
+                and the resume card.
+       Both are drawn by a WebGL2 shader. Everything visual lives in CONFIG
+       below; tools/dither-tuner.html tunes it live and exports these numbers. -->
   <script>
   (() => {
-    let canvas   = document.querySelector('.about-dither');
     const about  = document.querySelector('.about');
     const frame  = document.querySelector('.about-frame');
-    if (!canvas || !about) return;
-    // renderer — WebGL2 when available, else a 2D context for a static frame.
-    // Picked once the shader code below exists (see "pick the renderer").
-    let gl = null, ctx = null;
+    const farCanvas  = document.querySelector('.about-dither');
+    const nearCanvas = document.querySelector('.about-dither-near');
+    if (!farCanvas || !about) return;
 
     // ── the ONE place to tune the effect ───────────────────────────────
     const CONFIG = {
-      CELL:        9,     // px per dither cell (chunky) at full size. Smaller =
-                          //   finer grain. This is the DESKTOP value and the cap;
-                          //   see cellPx() for how it eases down on phones.
       CELL_MIN:    5,     // never finer than this — below it the ordered dither
                           //   stops reading as a pixel grid and just looks soft.
-      CELL_PER:    6,     // target cells across the visible margin. The field only
-                          //   shows in .about's side padding, so the margin — not
-                          //   the screen — is what the grain has to be legible in.
-      SCALE:       0.03,  // feature size: lower = bigger, more stretched-out clouds.
-      WARP:        5.7,   // domain-warp strength — how hard the field is smeared into
-                          //   flowing smoke wisps. 0 = plain (blobby) fractal noise.
-      OCT:         4,     // fractal detail in octaves. Higher = wispier (and costlier).
-      CONTRAST:    1.7,   // expands mids toward cream / deep pumpkin so wisps read.
-      FLOW:        0.05,  // how fast the smoke drifts and evolves over time.
+      CELL_PER:    6,     // target far cells across the visible margin. The field
+                          //   only shows in .about's side padding, so the margin —
+                          //   not the screen — is what the grain has to read in.
       FPS:         30,    // repaint cap — a slow drift needs nothing near 60.
-      SPEED:       0.4,   // apparent scroll speed of the field: 1 = locked to the
-                          //   page, 0 = pinned in the viewport (max depth). 0.4 =
-                          //   a calm, slow far-away layer. Forced to 1 (no
-                          //   parallax, no oversize) when the layer would exceed
-                          //   MAX_LAYER_PX — see the .about-dither.flat note.
+      SPEED:       0.23,  // the FAR field's apparent scroll speed: 1 = locked to
+                          //   the page, 0 = pinned in the viewport (max depth).
+                          //   Forced to 1 (no parallax, no oversize) when the
+                          //   layer would exceed MAX_LAYER_PX — see the
+                          //   .about-dither.flat note. The near layer is always 1.
       // Device-px ceilings for the COMPOSITED parallax layer. A promoted layer
       // is backed by a single GPU texture, and past the driver's limit it stops
       // rasterising — which is what left the field covering only part of the
@@ -2610,13 +2608,28 @@
       // coarse pointer is also where a subtle parallax is least missed.
       MAX_LAYER_PX:       16384,
       MAX_LAYER_PX_TOUCH: 8192,
-      OPACITY:     0.55,  // overall layer opacity (medium — never fights the text).
-      COBALT_AMT:  0.20,  // how much of the field tips into cobalt vs. orange (0–1).
-      DENSITY:     1.05,  // pigment coverage multiplier; >1 fills more cells.
-      // palette ramps, dark → light. Cell 0 stays transparent so the page's
-      // cream canvas shows through (and reads only in the resume's margins).
-      ORANGE: ['transparent', '#E8C58A', '#D98A3D', '#C95000', '#F2622E'],
-      COBALT: ['transparent', '#9FB7D8', '#3F6FB0', '#1F4E8C'],
+      // Per-layer look:
+      //   CELL      px per dither cell on desktop (phones scale down, cellPx())
+      //   SCALE     feature size — lower = bigger, more stretched-out clouds
+      //   WARP      domain-warp strength — how hard the noise smears into wisps
+      //   OCT       fractal detail in octaves (higher = wispier, costlier)
+      //   CONTRAST  expands the mids so wisps read against the cream
+      //   DENSITY   pigment coverage multiplier
+      //   CUT       sparseness — 0 = full field, higher = more clear sky
+      //   OPACITY   layer opacity
+      //   FLOW      how fast the smoke drifts and evolves
+      //   SEED      noise offset, so the two layers don't share a pattern
+      //   PALETTE   ramp from empty to densest; 'transparent' shows the page
+      FAR: {
+        CELL: 9, SCALE: 0.03, WARP: 5.7, OCT: 4, CONTRAST: 1.7, DENSITY: 1.05,
+        CUT: 0, OPACITY: 0.55, FLOW: 0.05, SEED: [0, 0],
+        PALETTE: ['transparent', '#E8C58A', '#D98A3D', '#C95000', '#F2622E'],
+      },
+      NEAR: {
+        CELL: 16, SCALE: 0.027, WARP: 4.5, OCT: 2, CONTRAST: 2.2, DENSITY: 0.91,
+        CUT: 0.76, OPACITY: 0.85, FLOW: 0.08, SEED: [37, -11],
+        PALETTE: ['transparent', '#9FB7D8', '#3F6FB0', '#1F4E8C'],
+      },
     };
 
     // 8×8 Bayer threshold matrix, normalised to (0,1). Ordered dithering
@@ -2634,14 +2647,22 @@
     // parse "#rrggbb" → [r,g,b]; 'transparent' → null (cell left see-through).
     const rgb = h => h === 'transparent' ? null
       : [1,3,5].map(i => parseInt(h.slice(i, i + 2), 16));
-    const ORANGE = CONFIG.ORANGE.map(rgb);
-    const COBALT = CONFIG.COBALT.map(rgb);
+
+    // One record per plane: its canvas, look, live cell size, bitmap size and
+    // renderer (WebGL2, or a 2D context for a static frame — see pickRenderer).
+    const mkLayer = (canvas, cfg) => ({
+      canvas, cfg, pal: cfg.PALETTE.map(rgb), cell: cfg.CELL,
+      cols: 0, rows: 0, gl: null, ctx: null, img: null, uT: null, uRows: null, ready: false,
+    });
+    const far  = mkLayer(farCanvas, CONFIG.FAR);
+    const near = nearCanvas ? mkLayer(nearCanvas, CONFIG.NEAR) : null;
+    const layers = near ? [far, near] : [far];
 
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // Where scroll-driven animations exist, CSS moves the layer on the compositor
-    // (see <style>) — perfectly smooth, no scroll lag. Older browsers fall back
-    // to driving the transform from JS, and so do environments that CLAIM
-    // support but never actually run the animation (see verifyCssDriven).
+    // Where scroll-driven animations exist, CSS moves the far layer on the
+    // compositor (see <style>) — perfectly smooth, no scroll lag. Older browsers
+    // (Firefox, today) fall back to driving the transform from JS, and so do
+    // environments that CLAIM support but never run it (see verifyCssDriven).
     let cssDriven = !!(window.CSS && CSS.supports && CSS.supports('animation-timeline: scroll()'));
     // Live parallax terms. `flat` means the layer would be too big to composite,
     // so speed goes to 1: no travel, no oversize, no promotion. Both are decided
@@ -2657,17 +2678,14 @@
     // values on every rebuild — see the note above @supports in <style>.
     const kf = document.createElement('style');
     document.head.appendChild(kf);
-    let cols = 0, rows = 0, img = null, pad = 0, curT = 0, tConst = 0;
+    let pad = 0, curT = 0, tConst = 0;
     let lastW = 0, lastVH = 0, last = 0;
-    // field clock origin; declared up here because resize() repaints with it
-    // and runs before the paint loop's own declarations.
+    // field clock; reduced motion pins every frame at t = 0
     const start = performance.now();
-    const fieldT = now => (now - start) / 1000 * CONFIG.FLOW * 20;
+    const fieldT = (L, now) => reduce ? 0 : (now - start) / 1000 * L.cfg.FLOW * 20;
     // last measured section height, kept so remeasure() can tell a mere
     // reposition (cheap) from a real geometry change (full rebuild).
     let secH = 0;
-    // live cell size — CONFIG.CELL on anything desktop-ish, finer on a phone.
-    let cell = CONFIG.CELL;
 
     // The dither is only ever seen in the gap between the section edge and the
     // resume frame, so THAT gap — not the viewport — decides whether the grain
@@ -2675,27 +2693,39 @@
     // ~34px, where 9px cells give you three and a half of them and the field
     // degenerates into a column of random squares. Sizing the cell so the margin
     // always holds about CELL_PER of them keeps the texture looking the same at
-    // every width, and clamping to CONFIG.CELL means the desktop tuning (and its
-    // measured cost) is untouched — this only ever makes phones finer.
+    // every width, and clamping to FAR.CELL means the desktop tuning (and its
+    // measured cost) is untouched — this only ever makes phones finer. The near
+    // layer keeps its size ratio to the far one.
     function cellPx() {
-      if (!frame) return CONFIG.CELL;
+      const c = CONFIG.FAR.CELL;
+      if (!frame) return c;
       const margin = (about.clientWidth - frame.clientWidth) / 2;
-      if (!(margin > 0)) return CONFIG.CELL;
-      return Math.min(CONFIG.CELL, Math.max(CONFIG.CELL_MIN, Math.round(margin / CONFIG.CELL_PER)));
+      if (!(margin > 0)) return c;
+      return Math.min(c, Math.max(CONFIG.CELL_MIN, Math.round(margin / CONFIG.CELL_PER)));
+    }
+
+    // (Re)allocate one layer's tiny cols×rows bitmap — CSS scales it up crisply
+    // — and refill it straight away, since resizing a canvas wipes it.
+    function sizeLayer(L, w, h) {
+      L.cols = Math.max(1, Math.ceil(w / L.cell));
+      L.rows = Math.max(1, Math.ceil(h / L.cell));
+      L.canvas.width = L.cols; L.canvas.height = L.rows;
+      if (L.gl) drawGL(L, fieldT(L, performance.now()));
+      else if (L.ctx) { L.img = L.ctx.createImageData(L.cols, L.rows); paint(L, 0); }
     }
 
     function resize() {
       const w = about.clientWidth, vh = window.innerHeight;
       lastW = w; lastVH = vh;
-      cell = cellPx();
+      far.cell = cellPx();
+      if (near) near.cell = Math.max(CONFIG.CELL_MIN, Math.round(far.cell * CONFIG.NEAR.CELL / CONFIG.FAR.CELL));
       // The FIELD is the section plus whatever it bleeds up above it (the wrap
-      // is pulled up by the same --about-bleed in CSS, so the canvas and the
-      // window onto it stay the same box). Two heights from here on, and they
-      // are NOT interchangeable: fieldH sizes the bitmap, secH sets the motion.
+      // is pulled up by the same --about-bleed in CSS, so the canvases and the
+      // window onto them stay the same box). Two heights from here on, and they
+      // are NOT interchangeable: fieldH sizes the bitmaps, secH sets the motion.
       // The view-timeline is declared on the SECTION, so its cover range is
       // secH + viewport — measuring travel off fieldH instead would move the
-      // layer further than the timeline it's driven by, and the band-paint maths
-      // (which assumes a slope of exactly tSlope) would drift off the transform.
+      // layer further than the timeline it's driven by.
       secH = about.clientHeight;
       const bleed = Math.max(0, parseFloat(getComputedStyle(about).getPropertyValue('--about-bleed')) || 0);
       const fieldH = secH + bleed;
@@ -2710,25 +2740,21 @@
       flat = (fieldH + 2 * wantTravel) * dpr > budget;
       speed = flat ? 1 : CONFIG.SPEED;
       tSlope = 1 - speed;
-      canvas.classList.toggle('flat', flat);
-      if (flat) canvas.style.transform = '';     // nothing must re-promote the layer
+      far.canvas.classList.toggle('flat', flat);
+      if (flat) far.canvas.style.transform = '';  // nothing must re-promote the layer
       // over a full scroll-through the layer shifts by (1 - SPEED) ×
       // (section + viewport); each side travels half of that. Flat = 0.
       const travel = Math.ceil(tSlope * (secH + vh) / 2);
-      // Oversize the layer by the travel — so translating it never exposes an
-      // edge — plus slack for the URL-bar height wobble we deliberately ignore.
-      pad = travel + Math.ceil(tSlope * VH_SLACK) + cell;
+      // Oversize the far layer by the travel — so translating it never exposes
+      // an edge — plus slack for the URL-bar height wobble we deliberately ignore.
+      pad = travel + Math.ceil(tSlope * VH_SLACK) + far.cell;
       const h = fieldH + pad * 2;
-      canvas.style.top = -pad + 'px';
-      canvas.style.height = h + 'px';
-      cols = Math.max(1, Math.ceil(w / cell));
-      rows = Math.max(1, Math.ceil(h / cell));
-      // render into a tiny cols×rows buffer, then let CSS scale it up crisply
-      canvas.width = cols; canvas.height = rows;
-      if (ctx) img = ctx.createImageData(cols, rows);
+      far.canvas.style.top = -pad + 'px';
+      far.canvas.style.height = h + 'px';
+      sizeLayer(far, w, h);
+      // the near layer is locked to the page: exactly the field, no oversize
+      if (near) { near.canvas.style.height = fieldH + 'px'; sizeLayer(near, w, fieldH); }
       last = 0;
-      // resizing a canvas wipes it — refill now rather than show a blank frame
-      if (gl) drawGL(fieldT(performance.now()));
       remeasure();
       // hand the travel to the compositor path as concrete-pixel keyframes
       kf.textContent = '@keyframes about-dither-parallax{from{transform:translateY(-'
@@ -2742,10 +2768,10 @@
     // at script time: the projects wall above builds after this script runs,
     // and pushes the section down by ~1400px on a phone, so it's re-measured on
     // anything that could move it (see the observers at the bottom).
-    // Cheap to redo — one rect read, no reallocation, no repaint. The bitmap is
-    // glued to the section, so moving the section doesn't invalidate a pixel of
-    // it. If the section has actually changed SIZE, that's a different problem
-    // and needs the full rebuild instead.
+    // Cheap to redo — one rect read, no reallocation, no repaint. The bitmaps
+    // are glued to the section, so moving the section doesn't invalidate a pixel
+    // of them. If the section has actually changed SIZE, that's a different
+    // problem and needs the full rebuild instead.
     function remeasure() {
       if (about.clientHeight !== secH) { resize(); return; }
       // anchored to the SECTION, since that's what the view-timeline tracks
@@ -2759,10 +2785,12 @@
     function setTransform() {
       if (reduce || flat) return;               // no scroll-driven motion
       curT = tSlope * window.scrollY - tConst;
-      canvas.style.transform = 'translateY(' + curT.toFixed(2) + 'px)';
+      far.canvas.style.transform = 'translateY(' + curT.toFixed(2) + 'px)';
     }
 
     // ── value-noise + domain warp → flowing, smoke-like field ──────────────
+    // The CPU version: the no-WebGL2 fallback, and the reference the shader
+    // below is ported from (see __ditherCompare under ?dither-debug=1).
     // cheap integer hash (no Math.sin) → pseudo-random [0,1) at lattice (ix,iy)
     function hash(ix, iy) {
       let n = (Math.imul(ix | 0, 374761393) + Math.imul(iy | 0, 668265263)) | 0;
@@ -2786,74 +2814,67 @@
     }
     // domain-warped sample: displace the lookup by its OWN low-octave fBm so
     // regions smear into flowing wisps instead of sitting in a fixed lattice.
-    // The warp (the expensive bit) is shared, so the cobalt mask is near-free.
-    function sample(gx, gy, t, out) {
+    function sample(c, gx, gy, t) {
       const wx = fbm(gx + 1.7 + t * 0.10, gy, 2);
       const wy = fbm(gx, gy + 9.2 - t * 0.08, 2);
-      const wgx = gx + CONFIG.WARP * wx;
-      const wgy = gy + CONFIG.WARP * wy;
-      out.dens = fbm(wgx, wgy, CONFIG.OCT);
-      out.cob  = fbm(wgx * 0.55 + 4.0, wgy * 0.55 - 2.0, 2);
+      return fbm(gx + c.WARP * wx, gy + c.WARP * wy, c.OCT);
     }
 
-    // pick a dithered colour for one cell given a 0…1 level + a ramp.
-    function ramp(level, pal, bx, by, out) {
-      level = Math.min(0.999, Math.max(0, level)) * (pal.length - 1);
-      const lo = Math.floor(level);
-      const hi = (level - lo) > BAYER[by & 7][bx & 7] ? lo + 1 : lo;
-      out.c = pal[hi];
-    }
-
-    const pick = { c: null };
-    const sm = { dens: 0, cob: 0 };
     // The field is sampled in canvas-LOCAL coordinates (no scroll term) so the
     // smoke, the pixel grid and the Bayer dither are all baked into the one
     // bitmap and move together — parallax is handled by translating the layer.
-    function paintRow(cy, t) {
-      const d = img.data, opaque = Math.round(255 * CONFIG.OPACITY);
-      const gy = cy * CONFIG.SCALE;
-      for (let cx = 0; cx < cols; cx++) {
-        const gx = cx * CONFIG.SCALE;
-        sample(gx, gy, t, sm);
-        // expand contrast around the mid so wisps read as cream→deep pumpkin
-        const dens = (sm.dens - 0.5) * CONFIG.CONTRAST + 0.5;
-        const useCobalt = sm.cob > (1 - CONFIG.COBALT_AMT);
-        ramp(dens * CONFIG.DENSITY, useCobalt ? COBALT : ORANGE, cx, cy, pick);
-        const i = (cy * cols + cx) * 4;
-        if (pick.c) {
-          d[i] = pick.c[0]; d[i + 1] = pick.c[1]; d[i + 2] = pick.c[2];
-          d[i + 3] = opaque;
+    function paintRow(L, buf, cy, t) {
+      const c = L.cfg, pal = L.pal, opaque = Math.round(255 * c.OPACITY);
+      const gy = cy * c.SCALE + c.SEED[1];
+      for (let cx = 0; cx < L.cols; cx++) {
+        const gx = cx * c.SCALE + c.SEED[0];
+        // expand contrast around the mid so wisps read as cream → deep colour,
+        // then lift the floor by CUT so only the densest wisps survive
+        let v = ((sample(c, gx, gy, t) - 0.5) * c.CONTRAST + 0.5) * c.DENSITY;
+        v = (v - c.CUT) / Math.max(1e-3, 1 - c.CUT);
+        let col = null;
+        if (v > 0) {
+          // dithered pick between the two palette steps around the level
+          const level = Math.min(0.999, v) * (pal.length - 1);
+          const lo = Math.floor(level);
+          col = pal[(level - lo) > BAYER[cy & 7][cx & 7] ? lo + 1 : lo];
+        }
+        const i = (cy * L.cols + cx) * 4;
+        if (col) {
+          buf[i] = col[0]; buf[i + 1] = col[1]; buf[i + 2] = col[2];
+          buf[i + 3] = opaque;
         } else {
-          d[i + 3] = 0;
+          buf[i + 3] = 0;
         }
       }
     }
     // one synchronous full-height CPU frame — the no-WebGL2 fallback, drawn
     // once (and again on resize); the parallax still runs over it.
-    function paint(t) {
-      for (let cy = 0; cy < rows; cy++) paintRow(cy, t);
-      ctx.putImageData(img, 0, 0);
+    function paint(L, t) {
+      for (let cy = 0; cy < L.rows; cy++) paintRow(L, L.img.data, cy, t);
+      L.ctx.putImageData(L.img, 0, 0);
     }
 
     // ── GPU path: the same field as a WebGL2 fragment shader ─────────────
     // One fragment per cell, so the WHOLE field repaints every frame for well
-    // under a millisecond of GPU time, and the main thread is left free. The
-    // CPU version above costs ~27ms per on-screen band on a mid laptop, so it
-    // had to be painted in strips across several frames on a 6ms budget — the
-    // strips catching up mid-scroll were the choppiness, and the budget ate
-    // into every frame of the JS parallax fallback (all of Firefox).
-    // The shader is a straight port of hash → vnoise → fbm → sample → ramp
+    // under a millisecond of main-thread time. The CPU version costs ~27ms per
+    // on-screen band on a mid laptop, so it had to be painted in strips across
+    // several frames — the strips catching up mid-scroll were the choppiness,
+    // and the budget ate into every frame of the JS parallax fallback.
+    // The shader is a straight port of hash → vnoise → fbm → sample → paintRow
     // above, integer hash included (WebGL2 uint maths wraps like Math.imul),
-    // so it draws the same field; only float rounding differs.
+    // so it draws the same field; only float rounding differs. Each layer's
+    // look is baked in as constants, so one program per layer.
     const glf = v => Number(v).toFixed(6);          // JS number → GLSL float literal
-    const FRAG = `#version 300 es
+    const fragFor = L => {
+      const c = L.cfg;
+      return `#version 300 es
       precision highp float;
       precision highp int;
       uniform float u_t;
       uniform float u_rows;
       uniform float u_bayer[64];
-      uniform vec4 u_orange[${ORANGE.length}];   // rgb 0-1, a = 0 for 'transparent'
-      uniform vec4 u_cobalt[${COBALT.length}];
+      uniform vec4 u_pal[${L.pal.length}];   // rgb 0-1, a = 0 for 'transparent'
       out vec4 o;
 
       float hash(int ix, int iy) {
@@ -2883,104 +2904,101 @@
         // canvas rows run top-down in the CPU version; gl_FragCoord is bottom-up
         float cx = floor(gl_FragCoord.x);
         float cy = u_rows - 1.0 - floor(gl_FragCoord.y);
-        float gx = cx * ${glf(CONFIG.SCALE)}, gy = cy * ${glf(CONFIG.SCALE)};
+        float gx = cx * ${glf(c.SCALE)} + ${glf(c.SEED[0])};
+        float gy = cy * ${glf(c.SCALE)} + ${glf(c.SEED[1])};
         float wx = fbm(gx + 1.7 + u_t * 0.10, gy, 2);
         float wy = fbm(gx, gy + 9.2 - u_t * 0.08, 2);
-        float wgx = gx + ${glf(CONFIG.WARP)} * wx;
-        float wgy = gy + ${glf(CONFIG.WARP)} * wy;
-        float dens = fbm(wgx, wgy, ${CONFIG.OCT | 0});
-        float cob  = fbm(wgx * 0.55 + 4.0, wgy * 0.55 - 2.0, 2);
-        dens = (dens - 0.5) * ${glf(CONFIG.CONTRAST)} + 0.5;
-        bool useCobalt = cob > ${glf(1 - CONFIG.COBALT_AMT)};
-        float steps = useCobalt ? ${glf(COBALT.length - 1)} : ${glf(ORANGE.length - 1)};
-        float level = clamp(dens * ${glf(CONFIG.DENSITY)}, 0.0, 0.999) * steps;
+        float dens = fbm(gx + ${glf(c.WARP)} * wx, gy + ${glf(c.WARP)} * wy, ${c.OCT | 0});
+        float v = ((dens - 0.5) * ${glf(c.CONTRAST)} + 0.5) * ${glf(c.DENSITY)};
+        v = (v - ${glf(c.CUT)}) / ${glf(Math.max(1e-3, 1 - c.CUT))};
+        if (v <= 0.0) { o = vec4(0.0); return; }
+        float level = min(0.999, v) * ${glf(L.pal.length - 1)};
         float lo = floor(level);
         float th = u_bayer[(int(cy) & 7) * 8 + (int(cx) & 7)];
         int idx = int(lo) + ((level - lo) > th ? 1 : 0);
-        vec4 c = useCobalt ? u_cobalt[idx] : u_orange[idx];
-        o = c.a > 0.0 ? vec4(c.rgb, ${glf(Math.round(255 * CONFIG.OPACITY) / 255)}) : vec4(0.0);
+        vec4 col = u_pal[idx];
+        o = col.a > 0.0 ? vec4(col.rgb, ${glf(Math.round(255 * c.OPACITY) / 255)}) : vec4(0.0);
       }`;
+    };
     // one oversized triangle covers the viewport — no vertex buffers needed
     const VERT = `#version 300 es
       void main() {
         vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
         gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
       }`;
-    let uT = null, uRows = null, glReady = false;
     // Compile + link and upload the constant uniforms. Returns false on any
     // failure so the caller can drop to the CPU path. Re-run after a context
     // restore, since a lost context takes every GL object with it.
-    function initGL() {
-      glReady = false;
+    function initGL(L) {
+      const gl = L.gl;
+      L.ready = false;
       const sh = (type, src) => {
         const s = gl.createShader(type);
         gl.shaderSource(s, src); gl.compileShader(s);
         if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.warn('dither shader:', gl.getShaderInfoLog(s)); return null; }
         return s;
       };
-      const vs = sh(gl.VERTEX_SHADER, VERT), fs = sh(gl.FRAGMENT_SHADER, FRAG);
+      const vs = sh(gl.VERTEX_SHADER, VERT), fs = sh(gl.FRAGMENT_SHADER, fragFor(L));
       if (!vs || !fs) return false;
       const prog = gl.createProgram();
       gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
       if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { console.warn('dither link:', gl.getProgramInfoLog(prog)); return false; }
       gl.useProgram(prog);
-      uT = gl.getUniformLocation(prog, 'u_t');
-      uRows = gl.getUniformLocation(prog, 'u_rows');
+      L.uT = gl.getUniformLocation(prog, 'u_t');
+      L.uRows = gl.getUniformLocation(prog, 'u_rows');
       gl.uniform1fv(gl.getUniformLocation(prog, 'u_bayer'), BAYER.flat());
-      const pal = p => p.flatMap(c => c ? [c[0] / 255, c[1] / 255, c[2] / 255, 1] : [0, 0, 0, 0]);
-      gl.uniform4fv(gl.getUniformLocation(prog, 'u_orange'), pal(ORANGE));
-      gl.uniform4fv(gl.getUniformLocation(prog, 'u_cobalt'), pal(COBALT));
+      gl.uniform4fv(gl.getUniformLocation(prog, 'u_pal'),
+        L.pal.flatMap(c => c ? [c[0] / 255, c[1] / 255, c[2] / 255, 1] : [0, 0, 0, 0]));
       gl.disable(gl.BLEND);                       // the shader writes final pixels
-      glReady = true;
+      L.ready = true;
       return true;
     }
-    function drawGL(t) {
-      if (!glReady || gl.isContextLost()) return;
-      gl.viewport(0, 0, cols, rows);
-      gl.uniform1f(uT, t);
-      gl.uniform1f(uRows, rows);
+    function drawGL(L, t) {
+      const gl = L.gl;
+      if (!L.ready || gl.isContextLost()) return;
+      gl.viewport(0, 0, L.cols, L.rows);
+      gl.uniform1f(L.uT, t);
+      gl.uniform1f(L.uRows, L.rows);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
 
-    // ── pick the renderer ────────────────────────────────────────────────
+    // ── pick each layer's renderer ───────────────────────────────────────
     // premultipliedAlpha:false so the shader can write straight colour + alpha,
     // exactly what putImageData gets on the CPU path.
-    gl = canvas.getContext('webgl2', {
-      alpha: true, premultipliedAlpha: false, antialias: false,
-      depth: false, stencil: false, preserveDrawingBuffer: false,
-    });
-    if (gl && !initGL()) {
-      // A canvas can't swap a WebGL context for a 2D one, so a failed shader
-      // means a fresh canvas element in the same spot (same class → same CSS
-      // parallax) for the CPU path to draw into.
-      gl = null;
-      const fresh = canvas.cloneNode(false);
-      canvas.replaceWith(fresh);
-      canvas = fresh;
+    function pickRenderer(L) {
+      L.gl = L.canvas.getContext('webgl2', {
+        alpha: true, premultipliedAlpha: false, antialias: false,
+        depth: false, stencil: false, preserveDrawingBuffer: false,
+      });
+      if (L.gl && !initGL(L)) {
+        // A canvas can't swap a WebGL context for a 2D one, so a failed shader
+        // means a fresh canvas element in the same spot (same class → same CSS
+        // parallax) for the CPU path to draw into.
+        L.gl = null;
+        const fresh = L.canvas.cloneNode(false);
+        L.canvas.replaceWith(fresh);
+        L.canvas = fresh;
+      }
+      if (L.gl) {
+        L.canvas.addEventListener('webglcontextlost', e => e.preventDefault());  // allow a restore
+        L.canvas.addEventListener('webglcontextrestored', () => { if (initGL(L)) drawGL(L, fieldT(L, performance.now())); });
+      } else {
+        L.ctx = L.canvas.getContext('2d');
+      }
     }
-    if (gl) {
-      canvas.addEventListener('webglcontextlost', e => e.preventDefault());  // allow a restore
-      canvas.addEventListener('webglcontextrestored', () => { if (initGL()) drawGL(fieldT(performance.now())); });
-    } else {
-      ctx = canvas.getContext('2d');
-    }
+    layers.forEach(pickRenderer);
 
     window.addEventListener('resize', () => {
       // Height-only resizes are the mobile URL bar showing/hiding mid-scroll;
       // rebuilding right then (canvas realloc + full repaint + a forced layout
-      // read) is itself a scroll hitch, and the bitmap already carries VH_SLACK
+      // read) is itself a scroll hitch, and the bitmaps already carry VH_SLACK
       // of headroom for exactly this — so skip them.
       if (about.clientWidth === lastW && Math.abs(window.innerHeight - lastVH) <= VH_SLACK) return;
       resize();
-      if (ctx) paint(0);
     });
 
-    resize();
-    if (ctx) paint(0);                // CPU path: one static frame, ever
-    if (reduce) {
-      if (gl) drawGL(0);              // one static, full frame — no motion
-      return;
-    }
+    resize();                         // sizes AND fills both layers
+    if (reduce) return;               // one static frame each, no motion
 
     // Only run while the section is actually on screen. It lives far down the
     // page, so off-screen this loop costs literally nothing. We also cap
@@ -2996,12 +3014,12 @@
     // a handful, the animation is dead there — demote to the JS fallback.
     let cssCheck = 0;                        // frames spent verifying; -1 = settled
     function verifyCssDriven() {
-      const a = canvas.getAnimations().find(x => x.animationName === 'about-dither-parallax');
+      const a = far.canvas.getAnimations().find(x => x.animationName === 'about-dither-parallax');
       if (a && a.currentTime !== null) { cssCheck = -1; return; }   // driving ✓
       if (++cssCheck > 8) {
         cssCheck = -1; cssDriven = false;
-        canvas.style.animation = 'none';     // clear the dead animation
-        setTransform();                      // and take over from JS
+        far.canvas.style.animation = 'none';  // clear the dead animation
+        setTransform();                       // and take over from JS
       }
     }
     function loop(now) {
@@ -3014,8 +3032,11 @@
       else if (!cssDriven) setTransform();   // JS parallax fallback; CSS path is
                                              // handled on the compositor, no JS
       else if (cssCheck >= 0) verifyCssDriven();
-      // the drift: a full-field GPU repaint, FPS-capped (CPU path stays static)
-      if (gl && now - last >= minDelta) { last = now; drawGL(fieldT(now)); }
+      // the drift: full-field GPU repaints, FPS-capped (CPU layers stay static)
+      if (now - last >= minDelta) {
+        last = now;
+        for (const L of layers) if (L.gl) drawGL(L, fieldT(L, now));
+      }
     }
     // Anything that can move the section down the document re-aims the transform.
     // The wall building is the big one (and it lands before you could have
@@ -3042,7 +3063,7 @@
     // neither reproduces on a desktop: the painter never covered those rows, or
     // it did and the compositor isn't rasterising a layer that tall. The GPU
     // path repaints every row every frame, so a hole there isn't the painter's.
-    // LAYER flags whether the canvas is even in the size range where WebKit
+    // LAYER flags whether the far canvas is even in the size range where WebKit
     // gives up (~8192 device px a side).
     if (/[?&]dither-debug=1\b/.test(location.search)) {
       const box = document.createElement('div');
@@ -3050,36 +3071,38 @@
         + 'font:11px/1.35 ui-monospace,monospace;padding:8px 10px;white-space:pre;pointer-events:none;'
         + 'border-radius:4px;max-width:calc(100vw - 16px)';
       document.body.appendChild(box);
-      // __ditherCompare(t): draw field time t on BOTH paths and report how many
-      // cells differ — the check that the shader port still matches paintRow().
-      window.__ditherCompare = (t = 12.5) => {
-        if (!gl) return 'cpu renderer — nothing to compare';
-        const keep = img;
-        img = new ImageData(cols, rows);
-        for (let cy = 0; cy < rows; cy++) paintRow(cy, t);
-        const cpu = img.data; img = keep;
-        drawGL(t);
-        const px = new Uint8Array(cols * rows * 4);
-        gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      // __ditherCompare(t, 'far' | 'near'): draw field time t on BOTH paths and
+      // report how many cells differ — the check that the shader port still
+      // matches paintRow().
+      window.__ditherCompare = (t = 12.5, which = 'far') => {
+        const L = which === 'near' ? near : far;
+        if (!L || !L.gl) return 'cpu renderer — nothing to compare';
+        const cpu = new Uint8ClampedArray(L.cols * L.rows * 4);
+        for (let cy = 0; cy < L.rows; cy++) paintRow(L, cpu, cy, t);
+        drawGL(L, t);
+        const px = new Uint8Array(L.cols * L.rows * 4);
+        L.gl.readPixels(0, 0, L.cols, L.rows, L.gl.RGBA, L.gl.UNSIGNED_BYTE, px);
         let diff = 0, coloured = 0;
-        for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
-          const i = (cy * cols + cx) * 4, j = ((rows - 1 - cy) * cols + cx) * 4;
+        for (let cy = 0; cy < L.rows; cy++) for (let cx = 0; cx < L.cols; cx++) {
+          const i = (cy * L.cols + cx) * 4, j = ((L.rows - 1 - cy) * L.cols + cx) * 4;
           if (cpu[i + 3]) coloured++;
           const same = (!cpu[i + 3] && !px[j + 3]) || (cpu[i + 3] && px[j + 3]
             && Math.abs(cpu[i] - px[j]) < 3 && Math.abs(cpu[i + 1] - px[j + 1]) < 3 && Math.abs(cpu[i + 2] - px[j + 2]) < 3);
           if (!same) diff++;
         }
-        return { cells: cols * rows, coloured, differ: diff, pct: +(100 * diff / (cols * rows)).toFixed(3) };
+        return { cells: L.cols * L.rows, coloured, differ: diff, pct: +(100 * diff / (L.cols * L.rows)).toFixed(3) };
       };
+      const desc = L => L ? L.cols + 'x' + L.rows + ' @' + L.cell + 'px ' + (L.gl ? 'webgl2' : 'cpu (static)') : 'none';
       setInterval(() => {
-        const cssH = parseFloat(canvas.style.height) || 0;
+        const cssH = parseFloat(far.canvas.style.height) || 0;
         box.textContent = [
-          'dpr ' + dpr + '  vp ' + innerWidth + 'x' + innerHeight + '  cell ' + cell,
+          'dpr ' + dpr + '  vp ' + innerWidth + 'x' + innerHeight,
           'section ' + about.clientHeight + '  bleed ' + getComputedStyle(about).getPropertyValue('--about-bleed').trim(),
           'flat ' + flat + '  speed ' + speed + '  css-driven ' + cssDriven,
           'LAYER ' + Math.round(cssH) + 'css = ' + Math.round(cssH * dpr) + 'dev'
             + (cssH * dpr > 8192 ? '  >8192 !' : '  ok'),
-          'buffer ' + cols + 'x' + rows + '  renderer ' + (gl ? 'webgl2' : 'cpu (static)'),
+          'far  ' + desc(far),
+          'near ' + desc(near),
           'running ' + running + '  scrollY ' + Math.round(scrollY),
         ].join('\n');
       }, 250);
