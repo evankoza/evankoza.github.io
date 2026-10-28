@@ -657,7 +657,9 @@ function askHello() {
   });
 }
 
-const NOTE = { pad: 12, size: 20, label: 13, ruleTop: 14, ruleH: 2, gap: 10, lead: 6 };
+// The contact line goes in the receipt's header, under the sender's nickname
+// the relay stamps there, so it's just the text: no label, no rule.
+const NOTE = { pad: 12, size: 20, top: 4, bottom: 4 };
 
 function wrapMono(ctx, text, maxW) {
   const out = [];
@@ -688,21 +690,16 @@ function renderHelloBits(text) {
   c.width = W;
   const x = c.getContext('2d', { willReadFrequently: true });
   x.font = `${NOTE.size}px monospace`;
-  const lines = wrapMono(x, text, W - NOTE.pad * 2);
+  const lines = wrapMono(x, text, W - NOTE.pad * 2).slice(0, 4);  // relay takes <= 120 rows
   const lineH = Math.round(NOTE.size * 1.3);
-  const h = Math.ceil((NOTE.ruleTop + NOTE.ruleH + NOTE.gap + NOTE.label + NOTE.lead
-                       + lines.length * lineH + NOTE.pad) / 8) * 8;
+  const h = NOTE.top + lines.length * lineH + NOTE.bottom;
 
   c.height = h;   // resizing the canvas clears the context, so restyle after
   x.fillStyle = '#fff'; x.fillRect(0, 0, W, h);
   x.fillStyle = '#000';
-  x.fillRect(NOTE.pad, NOTE.ruleTop, W - NOTE.pad * 2, NOTE.ruleH);
   x.textBaseline = 'top';
-  let y = NOTE.ruleTop + NOTE.ruleH + NOTE.gap;
-  x.font = `bold ${NOTE.label}px monospace`;
-  x.fillText('REACH ME AT', NOTE.pad, y);
-  y += NOTE.label + NOTE.lead;
   x.font = `${NOTE.size}px monospace`;
+  let y = NOTE.top;
   for (const line of lines) { x.fillText(line, NOTE.pad, y); y += lineH; }
 
   const d = x.getImageData(0, 0, W, h).data;
@@ -711,11 +708,24 @@ function renderHelloBits(text) {
   return { bits, h };
 }
 
-async function postJob(data, height) {
+// Cut blank rows off both ends (keeping a sliver of margin): a one-line
+// receipt shouldn't drag a block of empty paper along with it.
+function trimRows(bits, h, margin = 6) {
+  const blank = y => !bits.subarray(y * W, (y + 1) * W).some(Boolean);
+  let top = 0, bottom = h;
+  while (top < h && blank(top)) top++;
+  if (top === h) return { bits: bits.subarray(0, W * 8), h: 8 };   // nothing drawn
+  while (bottom > top && blank(bottom - 1)) bottom--;
+  top = Math.max(0, top - margin);
+  bottom = Math.min(h, bottom + margin);
+  return { bits: bits.subarray(W * top, W * bottom), h: bottom - top };
+}
+
+async function postJob(data, height, note) {
   const res = await fetch(`${RELAY_URL}/api/print`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ width: W, height, data }),
+    body: JSON.stringify({ width: W, height, data, ...(note ? { note } : {}) }),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
@@ -733,20 +743,14 @@ $('printBtn').addEventListener('click', async () => {
     fitPaper();
     const bits = ditherToBits();   // synchronous, uses the fitted paperH
     latestBits = bits;
+    const out = trimRows(bits, paperH);
 
-    // One job wherever it fits: the footer then tears off still attached to
-    // their receipt, and it costs a single slot of the relay's 3/minute.
-    let out = bits, height = paperH, tail = null;
+    // The contact line rides in the same job: the relay prints it in the
+    // header, under the sender's nickname, above the design.
+    let note = null;
     if (hello) {
-      const note = renderHelloBits(hello);
-      if (paperH + note.h <= MAX_H) {
-        out = new Uint8Array(W * (paperH + note.h));
-        out.set(bits, 0);
-        out.set(note.bits, W * paperH);
-        height = paperH + note.h;
-      } else {
-        tail = note;   // receipt is already at the height cap — send it after
-      }
+      const n = renderHelloBits(hello);
+      note = { height: n.h, data: packBits(n.bits, n.h) };
     }
 
     // Hammering the button sends the identical bitmap two or three times and
@@ -754,17 +758,15 @@ $('printBtn').addEventListener('click', async () => {
     // send against what we last sent: any edit at all — or a different note
     // in the box above — changes these bytes, so this only catches a true
     // repeat. Guidance, not enforcement; the relay is still the real limit.
-    const data = packBits(out, height);
-    if (data === lastSent) {
+    const data = packBits(out.bits, out.h);
+    const sending = data + (note ? note.data : '');
+    if (sending === lastSent) {
       setMsg('Already got that one — try making some changes before sending it again.', 'warn');
       return;
     }
 
-    await postJob(data, height);
-    // The receipt is away; a footer the relay turns down (rate limit) isn't
-    // worth reporting as a failed print.
-    if (tail) await postJob(packBits(tail.bits, tail.h), tail.h).catch(() => {});
-    lastSent = data;   // only after it lands, so a failed send can be retried
+    await postJob(data, out.h, note);
+    lastSent = sending;   // only after it lands, so a failed send can be retried
     // The relay accepting the job is the whole story we tell. Whether it hits
     // paper now or after the printer wakes up is my problem, not the visitor's,
     // so there's no job watcher and no queued-vs-printed distinction.
